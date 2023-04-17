@@ -102,7 +102,7 @@ class VidCompile:
 
         # Display the final results and output to file
         logging.info("Finished! Press any key to end and write to file")
-        pth = "./outputs/"
+        pth = "../outputs/"
         if not BATCH:
             cv2.waitKey()
         else:

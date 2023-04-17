@@ -21,8 +21,8 @@ and the start/stop frames. Keybinds are listed below (must be pressed with image
     - 'right' - moves forward one frame
     - 'up' - increases the threshold
     - 'down' - decreases the threshold
-8. Upon completion for each video, the output image will be saved to a folder named "./outputs"
-on the local directory (if nothing is there then it will make one automatically)
+8. Upon completion for each video, the output image will be saved to a folder named "outputs"
+on the same level as root (if nothing is there then it will make one automatically)
     - If BATCH is enabled, then the batch of videos will receive their own folder inside the
     outputs directory with the same name as the original directory.
 
@@ -36,7 +36,7 @@ image, so that patterns can be recognizes on size and preferred path.
 
 - To run in batch, set the boolean "BATCH" at the top to True
     - This will run all the videos in a directory at once instead of one video at a time
-    - Outputs will be placed in a nested directory inside "./outputs" with the same name as source
+    - Outputs will be placed in a nested directory inside "outputs" with the same name as source
 - To run with alpha blending, set ALPHA to True
     - ** This doesn't work as we planned, I only kept it for reference
 - To manually adjust the Initial threshold value, or the default start and stop frame, use:
