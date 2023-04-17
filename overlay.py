@@ -8,7 +8,7 @@ from tkinter import filedialog
 import cv2
 import numpy as np
 
-BATCH = False
+BATCH = True
 ALPHA = False
 INIT_THRESH = 255
 START = 0
