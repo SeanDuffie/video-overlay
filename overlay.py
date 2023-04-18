@@ -17,7 +17,7 @@ STOP = -1
 class VidCompile:
     """ Compiles an input video into one overlayed image """
     def __init__(self, path="") -> None:
-        fmt_main = "%(asctime)s | VidCompile:\t%(message)s"
+        fmt_main = "%(asctime)s | %(levelname)s VidCompile:\t%(message)s"
         logging.basicConfig(format=fmt_main, level=logging.INFO,
                         datefmt="%Y-%m-%d %H:%M:%S")
 
@@ -218,23 +218,23 @@ class VidCompile:
                 self.thresh += 1
             elif Key == 2555904:        # Right arrow, next frame
                 index += 1
-            elif Key == 13:
+            elif Key == 13:             # Enter key, accept current settings
                 break
-            elif Key == 27:
+            elif Key == 27:             # Escape key, skip current output
                 self.skip_clip = True
                 logging.info("Skipping video...")
                 break
-            elif Key == 97:
+            elif Key == 97:             # A key, decrement contour
                 self.contour_bounds -= 1
-            elif Key == 100:
+            elif Key == 100:            # D key, increment contour
                 self.contour_bounds += 1
-            elif Key == 32:
+            elif Key == 32:             # Space, set starting point
                 self.start = index
                 logging.info("New range: (%d-%d)", self.start, self.stop)
-            elif Key == 8:
+            elif Key == 8:              # Backspace, set stopping point
                 self.stop = index
                 logging.info("New range: (%d-%d)", self.start, self.stop)
-            else:
+            else:                       # Report unassigned key
                 logging.warning("Invalid Key: %d", Key)
 
             # Enforce bounds and debug
