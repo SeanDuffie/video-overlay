@@ -31,6 +31,13 @@ class LineDetector:
         """
         """
         self.filepath, self.img = self.read_file()
+
+        
+        self.num_cols = len(self.img[0])
+
+        self.start = 0
+        self.stop = self.num_cols-1
+
         self.col_im = self.compress_columns()
         self.rec_im = self.linear_reframe()
 
@@ -157,16 +164,11 @@ class LineDetector:
         first_bar = True
         thresh = 127
 
-        num_cols = len(rec_img[0])
-
-        self.start = 0
-        self.stop = num_cols-1
-
         # Loop until the user confirms the threshold value from the previews
         while True:
             # Draw lines on image
             color = cv2.cvtColor(rec_img, cv2.COLOR_GRAY2BGR)
-            
+
             for x in range(c):
                 if rec_img[0,x] > thresh:
                     color[:,x] = (0,255,0)
@@ -201,9 +203,9 @@ class LineDetector:
             if thresh < 0:
                 thresh = 0
 
-        def mountain_climber(self):
-            """
-            """
+    def mountain_climber(self):
+        """
+        """
 
 if __name__ == "__main__":
     LineDetector()
