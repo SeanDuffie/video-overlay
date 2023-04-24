@@ -64,7 +64,7 @@ class VidCompile:
         self.read_video()
 
         # Determine Maximum Brightness Threshold
-        if "bubble" in self.filename or not BATCH:   # If video has a bubble, prompt user to trim
+        if "bubble" in self.filename:   # If video has a bubble, prompt user to trim
             self.choose_thresh()
         cv2.destroyAllWindows()
 
@@ -101,11 +101,9 @@ class VidCompile:
             cv2.waitKey(1)
 
         # Display the final results and output to file
-        logging.info("Finished! Press any key to end and write to file")
+        logging.info("Finished! Writing to file...")
         pth = "../outputs/"
-        if not BATCH:
-            cv2.waitKey()
-        else:
+        if BATCH:
             pth += os.path.basename(self.filepath) + "/"
             if not os.path.exists(pth):
                 os.mkdir(pth)
@@ -113,8 +111,8 @@ class VidCompile:
         if ALPHA:
             cv2.imwrite(f"{pth}{self.filename[0:len(self.filename)-4]}-alpha.png",
                                             (np.rint(self.alpha_output)).astype(np.uint8))
-        cv2.imwrite(f"{pth}{self.filename[0:len(self.filename)-4]}.png", self.thresh_output)
 
+        cv2.imwrite(f"{pth}{self.filename[0:len(self.filename)-4]}.png", self.thresh_output)
         cv2.destroyAllWindows()
 
     def click_event(self, event, x, y, flags, params):
