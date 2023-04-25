@@ -1,5 +1,6 @@
 """ overlay.py
 """
+import datetime
 import logging
 import os
 import sys
@@ -28,6 +29,10 @@ class VidCompile:
         self.thresh = INIT_THRESH
         self.skip_clip = False
         self.contour_bounds = 250
+
+        # Prepare the outputs directory if it doesn't exist yet
+        if not os.path.exists("./outputs"):
+            os.mkdir("./outputs")
 
         logging.debug("Reading video...")
         if BATCH:
@@ -82,6 +87,9 @@ class VidCompile:
 
         alpha = 1/(self.stop-self.start)
 
+        start_time = datetime.datetime.utcnow()
+        logging.info("Program finished at: %s", datetime.datetime.strftime(start_time, "%Y-%m-%d %H:%M:%S"))
+
         # Overlay each of the selected frames onto the output image
         for i, im in enumerate(self.frame_arr):
             if i < self.start:
@@ -94,15 +102,17 @@ class VidCompile:
             self.thresh_overlay(im)
 
             logging.info("Frame %d/%d overlayed...", i-self.start, self.stop-self.start)
-            if ALPHA:
-                cv2.imshow("alpha_output", (np.rint(self.alpha_output)).astype(np.uint8))
             cv2.imshow("output", self.thresh_output)
 
             cv2.waitKey(1)
 
+        end_time = datetime.datetime.utcnow()
+        logging.info("Program finished at: %s", datetime.datetime.strftime(end_time, "%Y-%m-%d %H:%M:%S"))
+        logging.info("Program took %s seconds", str(end_time-start_time))
+
         # Display the final results and output to file
         logging.info("Finished! Writing to file...")
-        pth = "../outputs/"
+        pth = "./outputs/"
         if BATCH:
             pth += os.path.basename(self.filepath) + "/"
             if not os.path.exists(pth):
@@ -146,7 +156,7 @@ class VidCompile:
             if ret is True and (c <= stop or stop == -1):
 
                 if c >= start:       # Skip frames that are less than start
-                    frame    = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     self.frame_arr.append(frame)
 
             else:                   # Close the video after all frames have been read
