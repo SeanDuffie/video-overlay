@@ -31,6 +31,10 @@ class VidCompile:
         self.skip_clip = False
         self.contour_bounds = 250
 
+        # Prepare the outputs directory if it doesn't exist yet
+        if not os.path.exists("./outputs"):
+            os.mkdir("./outputs")
+
         logging.debug("Reading video...")
         if BATCH:
             if self.filepath == "":
