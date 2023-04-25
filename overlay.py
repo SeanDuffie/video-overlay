@@ -1,5 +1,6 @@
 """ overlay.py
 """
+import datetime
 import logging
 import os
 import sys
@@ -9,7 +10,7 @@ from tkinter import filedialog
 import cv2
 import numpy as np
 
-BATCH = True
+BATCH = False
 ALPHA = False
 INIT_THRESH = 255
 START = 0
@@ -18,7 +19,7 @@ STOP = -1
 class VidCompile:
     """ Compiles an input video into one overlayed image """
     def __init__(self, path="") -> None:
-        fmt_main = "%(asctime)s | %(levelname)s VidCompile:\t%(message)s"
+        fmt_main = "%(asctime)s\t| %(levelname)s\t| VidCompile:\t%(message)s"
         logging.basicConfig(format=fmt_main, level=logging.INFO,
                         datefmt="%Y-%m-%d %H:%M:%S")
 
@@ -80,61 +81,35 @@ class VidCompile:
 
         self.thresh_output = np.zeros(self.frame_arr[0].shape, dtype=np.uint8)
         self.thresh_output.fill(255)
-        
-        thread1 = np.zeros(self.frame_arr[0].shape, dtype=np.uint8)
-        thread1.fill(255)
-        thread2 = np.zeros(self.frame_arr[0].shape, dtype=np.uint8)
-        thread2.fill(255)
-        thread3 = np.zeros(self.frame_arr[0].shape, dtype=np.uint8)
-        thread3.fill(255)
-        thread4 = np.zeros(self.frame_arr[0].shape, dtype=np.uint8)
-        thread4.fill(255)
 
         alpha = 1/(self.stop-self.start)
 
+        start_time = datetime.datetime.utcnow()
+        logging.info("Program started at: %s", datetime.datetime.strftime(start_time, "%Y-%m-%d %H:%M:%S"))
+
         # Overlay each of the selected frames onto the output image
-        i = 0
-        while i < len(self.frame_arr):
-        # for i, im in enumerate(self.frame_arr):
+        for i, im in enumerate(self.frame_arr):
             if i < self.start:
-                i += 1
                 continue
             if i > self.stop:
                 break
 
             if ALPHA:
-                self.alpha_overlay(self.frame_arr[i], alpha)
-                # self.alpha_overlay(im, alpha)
+                self.alpha_overlay(im, alpha)
 
-            # This might have to go in __main__, reformate for multithreading
-            t1 = threading.Thread(target=self.thresh_overlay, name="Overlay-1", args=self.frame_arr[i], &thread1)
-            t1.start()
-            if i < self.stop:
-                t2 = threading.Thread(target=self.thresh_overlay, name="Overlay-2", args=self.frame_arr[i+1])
-                if i < self.stop-1:
-                    t3 = threading.Thread(target=self.thresh_overlay, name="Overlay-3", args=self.frame_arr[i+2])
-                    if i < self.stop-2:
-                        t4 = threading.Thread(target=self.thresh_overlay, name="Overlay-4", args=self.frame_arr[i+3])
-                        t4.join()
-                        self.
-                        i += 1
-                    t3.join()
-                    i += 1
-                t2.join()
-                i += 1
-            t1.join()
-            i += 1
-
+            self.thresh_overlay(im)
             logging.info("Frame %d/%d overlayed...", i-self.start, self.stop-self.start)
-            # if ALPHA:
-            #     cv2.imshow("alpha_output", (np.rint(self.alpha_output)).astype(np.uint8))
-            # cv2.imshow("output", self.thresh_output)
+            cv2.imshow("output", self.thresh_output)
 
             cv2.waitKey(1)
 
+        end_time = datetime.datetime.utcnow()
+        logging.info("Program finished at: %s", datetime.datetime.strftime(end_time, "%Y-%m-%d %H:%M:%S"))
+        logging.info("Program took %s seconds", str(end_time-start_time))
+
         # Display the final results and output to file
         logging.info("Finished! Writing to file...")
-        pth = "../outputs/"
+        pth = "./outputs/"
         if BATCH:
             pth += os.path.basename(self.filepath) + "/"
             if not os.path.exists(pth):
@@ -294,11 +269,27 @@ class VidCompile:
             This chooses the darker pixel for each spot of the two images
             Right now it is for grayscale images, but the can be modified for color
         """
+        thread_arr = []
         r,c = self.thresh_output.shape
-        for y in range(r):
+
+        def parse_row(im_row, y, ):
             for x in range(c):
-                if im[y,x] <= self.thresh and im[y,x] < self.thresh_output[y,x]:
-                    self.thresh_output[y,x] = im[y,x]
+                if im_row[x] <= self.thresh and im_row[x] < self.thresh_output[y,x]:
+                    self.thresh_output[y,x] = im_row[x]
+
+
+        for y in range(r):
+            row = im[y,:]
+            thread_arr.append(threading.Thread(target=parse_row, args=(row, y)))
+
+
+        # Start multithreading
+        for thread in thread_arr:
+            thread.start()
+
+        # End multithreading
+        for thread in thread_arr:
+            thread.join()
 
 if __name__ == "__main__":
     ov = VidCompile()
