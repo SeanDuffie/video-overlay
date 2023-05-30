@@ -10,6 +10,7 @@ from tkinter import filedialog
 import cv2
 import numpy as np
 
+THREADING = True
 BATCH = False
 ALPHA = False
 INIT_THRESH = 255
@@ -102,14 +103,15 @@ class VidCompile:
                 self.alpha_overlay(im, alpha)
 
             self.thresh_overlay(im)
-            logging.info("Frame %d/%d overlayed...", i-self.start, self.stop-self.start)
-            cv2.imshow("output", self.thresh_output)
+            # logging.info("Frame %d/%d overlayed...", i-self.start, self.stop-self.start)
+            # cv2.imshow("output", self.thresh_output)
 
-            cv2.waitKey(1)
+            # cv2.waitKey(1)
 
         end_time = datetime.datetime.utcnow()
         logging.info("Program finished at: %s", datetime.datetime.strftime(end_time, "%Y-%m-%d %H:%M:%S"))
         logging.info("Program took %s seconds", str(end_time-start_time))
+        logging.info("%f Frames per second", len(self.frame_arr)/(end_time-start_time).total_seconds())
 
         # Display the final results and output to file
         logging.info("Finished! Writing to file...")
@@ -259,41 +261,18 @@ class VidCompile:
                                 index, len(self.frame_arr)-1, self.thresh, len(contours))
 
     def alpha_overlay(self, im, alpha):
-        """ Overlay an image onto the background
-            This chooses the darker pixel for each spot of the two images
-            Right now it is for grayscale images, but the can be modified for color
+        """ Overlay an image onto the background using alpha channel
+            This average together all the pixels in the video for each individual spot
+            Right now it is for grayscale images, but can be modified for color
         """
-        r,c = self.alpha_output.shape
-        for y in range(r):
-            for x in range(c):
-                self.alpha_output[y,x] += im[y,x] * alpha
+        self.alpha_output += im * alpha
 
     def thresh_overlay(self, im):
-        """ Overlay an image onto the background
+        """ Overlay an image onto the background by comparing pixels
             This chooses the darker pixel for each spot of the two images
-            Right now it is for grayscale images, but the can be modified for color
+            Right now it is for grayscale images, but can be modified for color
         """
-        thread_arr = []
-        r,c = self.thresh_output.shape
-
-        def parse_row(im_row, y, ):
-            for x in range(c):
-                if im_row[x] <= self.thresh and im_row[x] < self.thresh_output[y,x]:
-                    self.thresh_output[y,x] = im_row[x]
-
-
-        for y in range(r):
-            row = im[y,:]
-            thread_arr.append(threading.Thread(target=parse_row, args=(row, y)))
-
-
-        # Start multithreading
-        for thread in thread_arr:
-            thread.start()
-
-        # End multithreading
-        for thread in thread_arr:
-            thread.join()
+        self.thresh_output = np.minimum(self.thresh_output, im)
 
 if __name__ == "__main__":
     ov = VidCompile()
