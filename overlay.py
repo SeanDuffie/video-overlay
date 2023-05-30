@@ -9,6 +9,7 @@ from tkinter import filedialog
 import cv2
 import numpy as np
 
+RECURSIVE = True
 BATCH = True
 ALPHA = False
 INIT_THRESH = 255
@@ -24,6 +25,8 @@ class VidCompile:
 
         # Set path
         self.filepath = path
+        self.directory = path
+        self.outputpath = path
         self.start = START
         self.stop = STOP
         self.thresh = INIT_THRESH
@@ -35,7 +38,30 @@ class VidCompile:
             os.mkdir("./outputs")
 
         logging.debug("Reading video...")
-        if BATCH:
+        if RECURSIVE:
+            if self.filepath == "":
+                self.filepath = filedialog.askdirectory()
+            if self.filepath == "":
+                logging.error("No directory specified! Exiting...")
+                sys.exit(1)
+            logging.info("Parsing directory: %s", self.filepath)
+            if self.outputpath == "":
+                self.outputpath = filedialog.askdirectory()
+            if self.outputpath == "":
+                logging.error("No output directory specified! Exiting...")
+                sys.exit(1)
+            logging.info("Output directory: %s", self.outputpath)
+            for root,d_names,f_names in os.walk(self.filepath):
+                for f in f_names:
+                    if f.endswith(".avi") or f.endswith(".mp4"):
+                        self.directory = root
+                        logging.info("Current Video Diretory: %s", self.directory)
+                        self.filename = os.path.basename(f)
+                        logging.info("Current Video: %s", self.filename)
+                        self.run()
+                        self.skip_clip = False
+
+        elif BATCH:
             if self.filepath == "":
                 self.filepath = filedialog.askdirectory()
             if self.filepath == "":
@@ -88,7 +114,7 @@ class VidCompile:
         alpha = 1/(self.stop-self.start)
 
         start_time = datetime.datetime.utcnow()
-        logging.info("Program started at: %s", datetime.datetime.strftime(start_time, "%Y-%m-%d %H:%M:%S"))
+        # logging.info("\tOverlay started at: %s", datetime.datetime.strftime(start_time, "%Y-%m-%d %H:%M:%S"))
 
         # Overlay each of the selected frames onto the output image
         for i, im in enumerate(self.frame_arr):
@@ -107,18 +133,28 @@ class VidCompile:
             # cv2.waitKey(1)
 
         end_time = datetime.datetime.utcnow()
-        logging.info("Program finished at: %s", datetime.datetime.strftime(end_time, "%Y-%m-%d %H:%M:%S"))
-        logging.info("Program took %s seconds", str(end_time-start_time))
-        logging.info("%f Frames per second", len(self.frame_arr)/(end_time-start_time).total_seconds())
-
-        end_time = datetime.datetime.utcnow()
-        logging.info("Program finished at: %s", datetime.datetime.strftime(end_time, "%Y-%m-%d %H:%M:%S"))
-        logging.info("Program took %s seconds", str(end_time-start_time))
+        # logging.info("\tOverlay finished at: %s", datetime.datetime.strftime(end_time, "%Y-%m-%d %H:%M:%S"))
+        logging.info("\tOverlay took %s seconds", str(end_time-start_time))
+        logging.info("\t%f Frames per second at %dx%d (%d Frames)",
+                        len(self.frame_arr)/(end_time-start_time).total_seconds(),
+                        len(self.frame_arr[0]),
+                        len(self.frame_arr[0][0]),
+                        len(self.frame_arr))
 
         # Display the final results and output to file
-        logging.info("Finished! Writing to file...")
+        logging.info("Finished! Writing to file...\n")
         pth = "./outputs/"
-        if BATCH:
+        if RECURSIVE:
+            pth = self.outputpath
+            subdir = self.directory
+            head, tail = os.path.split(self.filepath)
+            subdir = subdir.replace(head,'')
+            pth += subdir + "/"
+            pth = os.path.normpath(pth) + "/"
+            if not os.path.exists(pth):
+                os.makedirs(pth, exist_ok=True)
+
+        elif BATCH:
             pth += os.path.basename(self.filepath) + "/"
             if not os.path.exists(pth):
                 os.mkdir(pth)
@@ -143,8 +179,12 @@ class VidCompile:
             - step: int representing the amount of frames to skip in between includes
             Outputs:
             - None
+
+            FIXME: This is the weak link after the other speed fix, how can this run faster?
         """
-        if BATCH:
+        if RECURSIVE:
+            cap = cv2.VideoCapture(self.directory + "/" + self.filename)
+        elif BATCH:
             cap = cv2.VideoCapture(self.filepath + "/" + self.filename)
         else:
             cap = cv2.VideoCapture(self.filepath)
@@ -154,7 +194,10 @@ class VidCompile:
             logging.error("Error opening video stream or file")
 
         # Read until video is completed or stop is reached
+        start_time = datetime.datetime.utcnow()
+        # logging.info("\tFile Read started at: %s", datetime.datetime.strftime(start_time, "%Y-%m-%d %H:%M:%S"))
         c = 0
+
         while cap.isOpened():
             ret, frame = cap.read()     # Capture frame-by-frame
 
@@ -168,6 +211,15 @@ class VidCompile:
                 break
 
             c+=1
+
+        end_time = datetime.datetime.utcnow()
+        # logging.info("\tFile Read finished at: %s", datetime.datetime.strftime(end_time, "%Y-%m-%d %H:%M:%S"))
+        logging.info("\tFile Read took %s seconds", str(end_time-start_time))
+        logging.info("\t%f Frames per second at %dx%d (%d Frames)",
+                        len(self.frame_arr)/(end_time-start_time).total_seconds(),
+                        len(self.frame_arr[0]),
+                        len(self.frame_arr[0][0]),
+                        len(self.frame_arr))
 
         # Debug for image errors
         if len(self.frame_arr) == 0:
@@ -187,9 +239,17 @@ class VidCompile:
             - img: numpy image array, usually is the first frame of the video, but can be key frame
             Outputs:
             - None
+
+            FIXME: This is disruptive for recursive runs, here are some options:
+                - Add a boolean at the top to disable this for faster runs
+                - Replace the old video with the new frame array after cropping and remove "bubble"
+                    - 
         """
         index = 0
-        logging.info("Index = %d/%d\t|\tThreshold = %d", index, len(self.frame_arr)-1, self.thresh)
+        logging.info("Index = %d/%d\t|\tThreshold = %d",
+                        index,
+                        len(self.frame_arr)-1,
+                        self.thresh)
         logging.info("How to use:")
         logging.info("\t- 'esc' - skips the current video")
         logging.info("\t- 'enter' - accepts the current settings")
@@ -199,6 +259,7 @@ class VidCompile:
         logging.info("\t- 'right' - moves forward one frame")
         logging.info("\t- 'up' - increases the threshold")
         logging.info("\t- 'down' - decreases the threshold")
+        logging.info("\t- 'left click' - click anywhere on the image to show that pixel's value")
 
         # Loop until the user confirms the threshold value from the previews
         while True:
@@ -259,8 +320,12 @@ class VidCompile:
                 self.thresh = 255
             elif self.thresh < 0:
                 self.thresh = 0
-            logging.info("Index = %d/%d\t| Threshold = %d\t| Contours = %d",
-                                index, len(self.frame_arr)-1, self.thresh, len(contours))
+            logging.info("%s\t|\tIndex = %d/%d\t| Threshold = %d\t| Contours = %d",
+                                self.filename,
+                                index,
+                                len(self.frame_arr)-1,
+                                self.thresh,
+                                len(contours))
 
     def alpha_overlay(self, im, alpha):
         """ Overlay an image onto the background using alpha channel
