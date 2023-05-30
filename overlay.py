@@ -18,7 +18,7 @@ STOP = -1
 class VidCompile:
     """ Compiles an input video into one overlayed image """
     def __init__(self, path="") -> None:
-        fmt_main = "%(asctime)s | %(levelname)s VidCompile:\t%(message)s"
+        fmt_main = "%(asctime)s\t| %(levelname)s\t| VidCompile:\t%(message)s"
         logging.basicConfig(format=fmt_main, level=logging.INFO,
                         datefmt="%Y-%m-%d %H:%M:%S")
 
@@ -88,7 +88,7 @@ class VidCompile:
         alpha = 1/(self.stop-self.start)
 
         start_time = datetime.datetime.utcnow()
-        logging.info("Program finished at: %s", datetime.datetime.strftime(start_time, "%Y-%m-%d %H:%M:%S"))
+        logging.info("Program started at: %s", datetime.datetime.strftime(start_time, "%Y-%m-%d %H:%M:%S"))
 
         # Overlay each of the selected frames onto the output image
         for i, im in enumerate(self.frame_arr):
@@ -99,12 +99,17 @@ class VidCompile:
 
             if ALPHA:
                 self.alpha_overlay(im, alpha)
+
             self.thresh_overlay(im)
+            # logging.info("Frame %d/%d overlayed...", i-self.start, self.stop-self.start)
+            # cv2.imshow("output", self.thresh_output)
 
-            logging.info("Frame %d/%d overlayed...", i-self.start, self.stop-self.start)
-            cv2.imshow("output", self.thresh_output)
+            # cv2.waitKey(1)
 
-            cv2.waitKey(1)
+        end_time = datetime.datetime.utcnow()
+        logging.info("Program finished at: %s", datetime.datetime.strftime(end_time, "%Y-%m-%d %H:%M:%S"))
+        logging.info("Program took %s seconds", str(end_time-start_time))
+        logging.info("%f Frames per second", len(self.frame_arr)/(end_time-start_time).total_seconds())
 
         end_time = datetime.datetime.utcnow()
         logging.info("Program finished at: %s", datetime.datetime.strftime(end_time, "%Y-%m-%d %H:%M:%S"))
@@ -258,25 +263,18 @@ class VidCompile:
                                 index, len(self.frame_arr)-1, self.thresh, len(contours))
 
     def alpha_overlay(self, im, alpha):
-        """ Overlay an image onto the background
-            This chooses the darker pixel for each spot of the two images
-            Right now it is for grayscale images, but the can be modified for color
+        """ Overlay an image onto the background using alpha channel
+            This average together all the pixels in the video for each individual spot
+            Right now it is for grayscale images, but can be modified for color
         """
-        r,c = self.alpha_output.shape
-        for y in range(r):
-            for x in range(c):
-                self.alpha_output[y,x] += im[y,x] * alpha
+        self.alpha_output += im * alpha
 
     def thresh_overlay(self, im):
-        """ Overlay an image onto the background
+        """ Overlay an image onto the background by comparing pixels
             This chooses the darker pixel for each spot of the two images
-            Right now it is for grayscale images, but the can be modified for color
+            Right now it is for grayscale images, but can be modified for color
         """
-        r,c = self.thresh_output.shape
-        for y in range(r):
-            for x in range(c):
-                if im[y,x] <= self.thresh and im[y,x] < self.thresh_output[y,x]:
-                    self.thresh_output[y,x] = im[y,x]
+        self.thresh_output = np.minimum(self.thresh_output, im)
 
 if __name__ == "__main__":
     ov = VidCompile()
