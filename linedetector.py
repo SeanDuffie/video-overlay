@@ -46,7 +46,7 @@ class LineDetector:
         # x, y = enumerate(col_im[0])
         plt.plot(self.col_im[0,self.start:self.stop])
         plt.plot(self.rec_im[0,self.start:self.stop])
-        plt.show()
+        # plt.show()
         plt.savefig(f"graph_{self.filename}")
 
         # cv2.waitKey()
@@ -74,7 +74,8 @@ class LineDetector:
         avg_col = np.zeros((r, c), np.uint8)
 
         for x in range(c):
-            avg_col[:,x] = np.average(255-self.img[:,x])
+            # avg_col[:,x] = np.average(255-self.img[:,x])
+            avg_col[:,x] = 255-np.min(self.img[:,x])
 
         if ZONE1:
             self.select_zone(avg_col)

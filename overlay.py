@@ -2,6 +2,7 @@
 """
 import datetime
 import logging
+import multiprocessing as mp
 import os
 import sys
 from tkinter import filedialog
@@ -10,11 +11,7 @@ import cv2
 import numpy as np
 
 RECURSIVE = True
-BATCH = True
-ALPHA = False
 INIT_THRESH = 255
-START = 0
-STOP = -1
 
 class VidCompile:
     """ Compiles an input video into one overlayed image """
@@ -27,10 +24,7 @@ class VidCompile:
         self.filepath = path
         self.directory = path
         self.outputpath = path
-        self.start = START
-        self.stop = STOP
         self.thresh = INIT_THRESH
-        self.skip_clip = False
         self.contour_bounds = 250
 
         # Prepare the outputs directory if it doesn't exist yet
@@ -46,7 +40,8 @@ class VidCompile:
                 sys.exit(1)
             logging.info("Parsing directory: %s", self.filepath)
             if self.outputpath == "":
-                self.outputpath = filedialog.askdirectory()
+                # self.outputpath = filedialog.askdirectory()
+                self.outputpath = "./outputs"
             if self.outputpath == "":
                 logging.error("No output directory specified! Exiting...")
                 sys.exit(1)
@@ -59,21 +54,6 @@ class VidCompile:
                         self.filename = os.path.basename(f)
                         logging.info("Current Video: %s", self.filename)
                         self.run()
-                        self.skip_clip = False
-
-        elif BATCH:
-            if self.filepath == "":
-                self.filepath = filedialog.askdirectory()
-            if self.filepath == "":
-                logging.error("No directory specified! Exiting...")
-                sys.exit(1)
-            logging.info("Parsing directory: %s", self.filepath)
-            for file_name in os.listdir(self.filepath):
-                if file_name.endswith(".avi") or file_name.endswith(".mp4"):
-                    self.filename = os.path.basename(file_name)
-                    logging.info("Current Video: %s", self.filename)
-                    self.run()
-                    self.skip_clip = False
 
         else:
             if self.filepath == "":
@@ -90,56 +70,116 @@ class VidCompile:
     def run(self):
         """ Main runner per video """
         # Obtain frames to go into the overlayed image
-        self.frame_arr = []
-        self.alpha_arr = []
-        self.read_video()
+        self.single_process()
+        # self.multi_process()
 
-        # Determine Maximum Brightness Threshold
-        if "bubble" in self.filename:   # If video has a bubble, prompt user to trim
-            self.choose_thresh()
-        cv2.destroyAllWindows()
+    def single_process(self) -> None:
+        self.process_video(1)
 
-        # Cancel video processing
-        if self.skip_clip:
-            return
+    # def multi_process(self):
+    #     num_processes = mp.cpu_count()
+    #     frame_jump_unit = f
+    #     p = mp.Pool(self.process_video, range(num_processes))
 
-        # Generate initial background images
-        if ALPHA:
-            self.alpha_output = np.zeros(self.frame_arr[0].shape, dtype=np.float64)
-            self.alpha_output.fill(0)
+    def process_video(self, group_number):
+        """ Read in individual frames from the video
 
-        self.thresh_output = np.zeros(self.frame_arr[0].shape, dtype=np.uint8)
-        self.thresh_output.fill(255)
+            Inputs:
+            - None
+            Outputs:
+            - None
 
-        alpha = 1/(self.stop-self.start)
-
+            FIXME: This is the weak link after the other speed fix, how can this run faster?
+                - Move output here and get rid of frame_arr?
+                - Multiprocessing?
+        """
         start_time = datetime.datetime.utcnow()
-        # logging.info("\tOverlay started at: %s", datetime.datetime.strftime(start_time, "%Y-%m-%d %H:%M:%S"))
 
-        # Overlay each of the selected frames onto the output image
-        for i, im in enumerate(self.frame_arr):
-            if i < self.start:
-                continue
-            if i > self.stop:
-                break
+        if RECURSIVE:
+            cap = cv2.VideoCapture(self.directory + "/" + self.filename)
+        else:
+            cap = cv2.VideoCapture(self.filepath)
 
-            if ALPHA:
-                self.alpha_overlay(im, alpha)
+        # Check if camera opened successfully
+        if cap.isOpened() is False:
+            logging.error("Error opening video stream or file")
 
-            self.thresh_overlay(im)
-            # logging.info("Frame %d/%d overlayed...", i-self.start, self.stop-self.start)
-            # cv2.imshow("output", self.thresh_output)
+        # If successful, set parameters
+        # cap.set(cv2.CAP_PROP_MODE, cv2.CAP_MODE_GRAY)
 
-            # cv2.waitKey(1)
+        # Read variables from video file
+        width, height, fcnt, fps = (
+            int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+            int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
+            int(cap.get(cv2.CAP_PROP_FPS))
+        )
+        self.start: int = 0
+        self.stop: int = fcnt - 1
+        logging.info("\tVideo contains %d frames at %dx%d resolution and %d fps", fcnt, width, height, fps)
+
+        # Initialize the starting output background
+        self.output = np.zeros((height, width), dtype=np.uint8)
+        self.output.fill(255)
+
+        try:
+            # Read until video is completed or stop is reached
+            c: int = 0              # Iterater through video frames
+            edit_status: int = -1    # If the video has a bubble, this determines editing state
+            while cap.isOpened():
+
+                # Skip frames that are outside of the set bounds
+                if c < fcnt and c >= 0:
+                    # frameTime = 1000.0 * c / fps
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, c)
+                    # cap.set(cv2.CAP_PROP_POS_MSEC, frameTime)
+                    # cur_pos = cap.get(cv2.CAP_PROP_POS_FRAMES)
+                    # if c != cur_pos:
+                    #     print("Current cursor:\t", cur_pos, "\t|\tNew cursor:\t", c)
+
+                    # Do image reading
+                    ret, frame = cap.read()         # Capture frame-by-frame
+                    if ret is True:                     # Check if read is successful
+                        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                        # If video has a bubble, prompt user to trim until they confirm
+                        if "bubble" in self.filename:
+                            if edit_status <= 0:
+                                c, edit_status  = self.edit_vid(frame, fcnt, c, edit_status)
+                                ret = True
+                                cv2.waitKey(1)
+                            if edit_status == 1:
+                                if c < self.start:
+                                    continue
+                                if c > self.stop:
+                                    break
+                                self.process_frame(frame)
+                                c+=1
+                                # TODO: save to new video and delete old one
+                                cv2.destroyAllWindows()
+                            elif edit_status == 2:               # If the user elects to ignore the clip, move on
+                                logging.warning("Skipping the current bubble clip...")
+                                cv2.destroyAllWindows()
+                                return
+
+                        else:
+                            # Do image processing
+                            self.process_frame(frame)
+                            c+=1
+                    else:                   # Close the video after all frames have been read
+                        cap.release()
+                        break
+
+        except KeyboardInterrupt:
+            cap.release()
+            sys.exit(1)
+        
+        cap.release()
 
         end_time = datetime.datetime.utcnow()
-        # logging.info("\tOverlay finished at: %s", datetime.datetime.strftime(end_time, "%Y-%m-%d %H:%M:%S"))
-        logging.info("\tOverlay took %s seconds", str(end_time-start_time))
-        logging.info("\t%f Frames per second at %dx%d (%d Frames)",
-                        len(self.frame_arr)/(end_time-start_time).total_seconds(),
-                        len(self.frame_arr[0]),
-                        len(self.frame_arr[0][0]),
-                        len(self.frame_arr))
+        run_time: float = (end_time-start_time).total_seconds()
+        logging.info("\tProcessing took %f seconds", run_time)
+        logging.info("\t%f Frames processed per second", fcnt/run_time)
 
         # Display the final results and output to file
         logging.info("Finished! Writing to file...\n")
@@ -153,85 +193,20 @@ class VidCompile:
             pth = os.path.normpath(pth) + "/"
             if not os.path.exists(pth):
                 os.makedirs(pth, exist_ok=True)
+        cv2.imwrite(f"{pth}{self.filename[0:len(self.filename)-4]}.png", self.output)
 
-        elif BATCH:
-            pth += os.path.basename(self.filepath) + "/"
-            if not os.path.exists(pth):
-                os.mkdir(pth)
-
-        if ALPHA:
-            cv2.imwrite(f"{pth}{self.filename[0:len(self.filename)-4]}-alpha.png",
-                                            (np.rint(self.alpha_output)).astype(np.uint8))
-
-        cv2.imwrite(f"{pth}{self.filename[0:len(self.filename)-4]}.png", self.thresh_output)
-        cv2.destroyAllWindows()
+    def process_frame(self, im):
+        """ Overlay an image onto the background by comparing pixels
+            This chooses the darker pixel for each spot of the two images
+            Right now it is for grayscale images, but can be modified for color
+        """
+        self.output = np.minimum(self.output, im)
 
     def click_event(self, event, x, y, flags, params):
         if event == cv2.EVENT_LBUTTONDOWN:
             print(f"({x},{y}) -> {self.current_frame[y,x]}")
 
-    def read_video(self, start=0, stop=-1):
-        """ Read in individual frames from the video
-
-            Inputs:
-            - start: int marking the first frame of the video to include
-            - stop: int marking the last frame to include
-            - step: int representing the amount of frames to skip in between includes
-            Outputs:
-            - None
-
-            FIXME: This is the weak link after the other speed fix, how can this run faster?
-        """
-        if RECURSIVE:
-            cap = cv2.VideoCapture(self.directory + "/" + self.filename)
-        elif BATCH:
-            cap = cv2.VideoCapture(self.filepath + "/" + self.filename)
-        else:
-            cap = cv2.VideoCapture(self.filepath)
-
-        # Check if camera opened successfully
-        if cap.isOpened() is False:
-            logging.error("Error opening video stream or file")
-
-        # Read until video is completed or stop is reached
-        start_time = datetime.datetime.utcnow()
-        # logging.info("\tFile Read started at: %s", datetime.datetime.strftime(start_time, "%Y-%m-%d %H:%M:%S"))
-        c = 0
-
-        while cap.isOpened():
-            ret, frame = cap.read()     # Capture frame-by-frame
-
-            if ret is True and (c <= stop or stop == -1):
-
-                if c >= start:       # Skip frames that are less than start
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                    self.frame_arr.append(frame)
-
-            else:                   # Close the video after all frames have been read
-                break
-
-            c+=1
-
-        end_time = datetime.datetime.utcnow()
-        # logging.info("\tFile Read finished at: %s", datetime.datetime.strftime(end_time, "%Y-%m-%d %H:%M:%S"))
-        logging.info("\tFile Read took %s seconds", str(end_time-start_time))
-        logging.info("\t%f Frames per second at %dx%d (%d Frames)",
-                        len(self.frame_arr)/(end_time-start_time).total_seconds(),
-                        len(self.frame_arr[0]),
-                        len(self.frame_arr[0][0]),
-                        len(self.frame_arr))
-
-        # Debug for image errors
-        if len(self.frame_arr) == 0:
-            logging.warning("Issue Reading Video...")
-        else:
-            self.start = 0
-            self.stop = len(self.frame_arr) - 1
-            logging.debug("Video length = %d frames", len(self.frame_arr))
-
-        cap.release()
-
-    def choose_thresh(self) -> None:
+    def edit_vid(self, gry, fcnt, index, status) -> tuple[int, int]:
         """ Decide on what threshold to apply on the image
             Anything above the threshold will be considered background and ignored
 
@@ -241,105 +216,109 @@ class VidCompile:
             - None
 
             FIXME: This is disruptive for recursive runs, here are some options:
-                - Add a boolean at the top to disable this for faster runs
-                - Replace the old video with the new frame array after cropping and remove "bubble"
-                    - 
+                - Add a boolean at the top to disable this for faster/smoother runs
+                - Replace the old video with the new frame array after cropping and remove "bubble" from name
+                    - This would make bubbles a one time fix, but would modify the original file (could be good or bad)
         """
-        index = 0
-        logging.info("Index = %d/%d\t|\tThreshold = %d",
-                        index,
-                        len(self.frame_arr)-1,
-                        self.thresh)
-        logging.info("How to use:")
-        logging.info("\t- 'esc' - skips the current video")
-        logging.info("\t- 'enter' - accepts the current settings")
-        logging.info("\t- 'space' - sets the current frame as the starting point")
-        logging.info("\t- 'backspace' - sets the current frame as the ending point")
-        logging.info("\t- 'left' - moves back one frame")
-        logging.info("\t- 'right' - moves forward one frame")
-        logging.info("\t- 'up' - increases the threshold")
-        logging.info("\t- 'down' - decreases the threshold")
-        logging.info("\t- 'left click' - click anywhere on the image to show that pixel's value")
+        if status == -1:                # Only print this the first time for each video edit
+            # def nothing(x):
+            #     pass
 
-        # Loop until the user confirms the threshold value from the previews
-        while True:
-            # Is the input image grayscale already? If not, convert it
-            gry = self.frame_arr[index]
-            color = cv2.cvtColor(gry, cv2.COLOR_GRAY2BGR)
-            self.current_frame = gry
+            # cv2.namedWindow('image', cv2.WINDOW_FULLSCREEN)
+            # cv2.setMouseCallback('image', self.click_event)
+            # cv2.setWindowProperty('image', cv2.WND_PROP_TOPMOST, 1)
+            # cv2.createTrackbar('color_track', 'image', INIT_THRESH, 255, nothing)
 
-            # Generate thresholds
-            ret, edit = cv2.threshold(gry,self.thresh,255,cv2.THRESH_TOZERO_INV)
-            ret, binary = cv2.threshold(gry,self.thresh,255,cv2.THRESH_BINARY)
-            contours, hierarchy = cv2.findContours(edit, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
-            for ctr in contours:
-                if ctr[0,0,0] > self.contour_bounds:
-                    cv2.drawContours(color, ctr, 0, (0,255,0), 5)
+            logging.info("How to use:")
+            logging.info("\t- 'esc' - skips the current video")
+            logging.info("\t- 'enter' - accepts the current settings")
+            logging.info("\t- 'space' - sets the current frame as the starting point")
+            logging.info("\t- 'backspace' - sets the current frame as the ending point")
+            logging.info("\t- 'left' - moves back one frame")
+            logging.info("\t- 'right' - moves forward one frame")
+            logging.info("\t- 'up' - increases the threshold")
+            logging.info("\t- 'down' - decreases the threshold")
+            logging.info("\t- 'left click' - click anywhere on the image to show that pixel's value")
+            logging.info("Editing video with %d frames...", fcnt)
 
-            # Show preview
-            cv2.imshow("contour", color)
-            cv2.imshow("image", edit)
-            cv2.setMouseCallback('image', self.click_event)
-            cv2.imshow("binary", binary)
+        # Converts grayscale to bgr for contours and sets self.current_frame for the click event
+        # (These are not currently being used and could technically be removed)
+        color = cv2.cvtColor(gry, cv2.COLOR_GRAY2BGR)
+        self.current_frame = gry
 
-            # Use arrow keys to adjust threshold, up/down are fine tuning, left/right are bigger
-            Key = cv2.waitKeyEx()
-            if Key == 2424832:          # Left arrow, previous frame
-                index -= 1
-            elif Key == 2621440:        # Down arrow, step down brightness
-                self.thresh -= 1
-            elif Key == 2490368:        # Up arrow, step up brightness
-                self.thresh += 1
-            elif Key == 2555904:        # Right arrow, next frame
-                index += 1
-            elif Key == 13:             # Enter key, accept current settings
-                break
-            elif Key == 27:             # Escape key, skip current output
-                self.skip_clip = True
-                logging.info("Skipping video...")
-                break
-            elif Key == 97:             # A key, decrement contour
-                self.contour_bounds -= 1
-            elif Key == 100:            # D key, increment contour
-                self.contour_bounds += 1
-            elif Key == 32:             # Space, set starting point
-                self.start = index
-                logging.info("New range: (%d-%d)", self.start, self.stop)
-            elif Key == 8:              # Backspace, set stopping point
-                self.stop = index
-                logging.info("New range: (%d-%d)", self.start, self.stop)
-            else:                       # Report unassigned key
-                logging.warning("Invalid Key: %d", Key)
+        # Generate thresholds
+        ret, edit = cv2.threshold(gry,self.thresh,255,cv2.THRESH_TOZERO_INV)
+        ret, binary = cv2.threshold(gry,self.thresh,255,cv2.THRESH_BINARY)
+        contours, hierarchy = cv2.findContours(edit, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+        for ctr in contours:
+            if ctr[0,0,0] > self.contour_bounds:
+                cv2.drawContours(color, ctr, 0, (0,255,0), 5)
 
-            # Enforce bounds and debug
-            if index > len(self.frame_arr)-1:
-                index = len(self.frame_arr)-1
-            elif index < 0:
-                index = 0
-            if self.thresh > 255:
-                self.thresh = 255
-            elif self.thresh < 0:
-                self.thresh = 0
-            logging.info("%s\t|\tIndex = %d/%d\t| Threshold = %d\t| Contours = %d",
-                                self.filename,
-                                index,
-                                len(self.frame_arr)-1,
-                                self.thresh,
-                                len(contours))
+        # Show previews
+        cv2.imshow("contour", color)
+        cv2.imshow("binary", binary)
+        cv2.imshow("image", edit)
 
-    def alpha_overlay(self, im, alpha):
-        """ Overlay an image onto the background using alpha channel
-            This average together all the pixels in the video for each individual spot
-            Right now it is for grayscale images, but can be modified for color
-        """
-        self.alpha_output += im * alpha
+        # Use arrow keys to adjust threshold, up/down are fine tuning, left/right are bigger
+        Key = cv2.waitKeyEx()
+        if Key == 2424832:          # Left arrow, previous frame
+            index -= 1
+        elif Key == 2621440:        # Down arrow, step down brightness
+            self.thresh -= 1
+        elif Key == 2490368:        # Up arrow, step up brightness
+            self.thresh += 1
+        elif Key == 2555904:        # Right arrow, next frame
+            index += 1
+        elif Key == 13:             # Enter key, accept current settings
+            return index, 1
+        elif Key == 27:             # Escape key, skip current output
+            logging.info("Skipping video...")
+            return index, 2
+        elif Key == 97:             # A key, decrement contour
+            self.contour_bounds -= 1
+        elif Key == 100:            # D key, increment contour
+            self.contour_bounds += 1
+        elif Key == 32:             # Space, set starting point
+            self.start = index
+            logging.info("New range: (%d-%d)", self.start, self.stop)
+        elif Key == 8:              # Backspace, set stopping point
+            self.stop = index
+            logging.info("New range: (%d-%d)", self.start, self.stop)
+        elif Key == 102:            # F key, print filename
+            logging.info("File:\t%s", self.filename)
+        else:                       # Report unassigned key
+            logging.warning("Invalid Key: %d", Key)
 
-    def thresh_overlay(self, im):
-        """ Overlay an image onto the background by comparing pixels
-            This chooses the darker pixel for each spot of the two images
-            Right now it is for grayscale images, but can be modified for color
-        """
-        self.thresh_output = np.minimum(self.thresh_output, im)
+        # self.thresh = cv2.getTrackbarPos('color_track', 'image')
+
+        # Enforce bounds and debug
+        # FIXME: the fcnt-2 below prevents the user from accessing the last frame, because when
+        #       they do, the process_video sees that it's the last frame and exits without saving
+        #       any of the frames and writes a white image. Everything else still works, and the
+        #       last frame isn't skipped in processing, just editing
+        if index > fcnt-2:
+            index = fcnt-2
+        elif index < 0:
+            index = 0
+        if self.thresh > 255:
+            self.thresh = 255
+        elif self.thresh < 0:
+            self.thresh = 0
+        logging.info("Index = %d/%d\t| Threshold = %d\t| Contours = %d",
+                            index,
+                            fcnt-1,
+                            self.thresh,
+                            len(contours))
+
+        return index, 0
+
+    # def alpha_overlay(self, im, alpha):
+    #     """ Overlay an image onto the background using alpha channel
+    #         This average together all the pixels in the video for each individual spot
+    #         Right now it is for grayscale images, but can be modified for color
+    #     """
+    #     alpha = 1/(self.stop-self.start)
+    #     self.alpha_output += im * alpha
 
 if __name__ == "__main__":
     ov = VidCompile()
