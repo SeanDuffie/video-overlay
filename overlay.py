@@ -25,7 +25,7 @@ class VidCompile:
         self.cur_dir: str = ''              # Placeholder for the filepath string iterator
         self.cur_vid: str = ''              # Placeholder for the filename string iterator
         self.inpath: str = './samples'      # Path of the root output directory
-        self.outpath: str = './outputs/'     # Path of the root output directory
+        self.outpath: str = './outputs/'    # Path of the root output directory
 
         # Prepare the outputs directory if it doesn't exist yet
         os.makedirs("./outputs", exist_ok=True)
@@ -159,7 +159,7 @@ class VidCompile:
 
         return fcnt
 
-    def edit_vid(self, cap, fcnt: int, fname: str) -> tuple[int, int, bool]:
+    def edit_vid(self, cap, fcnt: int, fname: str): #-> tuple[int, int, bool]:
         """ Decide on what threshold to apply on the image
             Anything above the threshold will be considered background and ignored
 
