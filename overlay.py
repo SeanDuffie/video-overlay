@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 
 RECURSIVE: bool = True  # Single file or whole directory?
-MP: bool = True         # Use Multiprocessing?
+MP: bool = False         # Use Multiprocessing?
 INIT_THRESH: int = 255  # Background cutoff value
 CUR_DIR: str = ''       # Placeholder for the filepath string
 CUR_VID: str = ''       # Placeholder for the filename string
@@ -74,7 +74,7 @@ class VidCompile:
         # Open Camera and check for success
         cap = cv2.VideoCapture(fname)
         if cap.isOpened() is False:
-            print("Error opening video stream or file")
+            logging.error("Error opening video stream or file. Exiting...")
             sys.exit(1)
 
         # Read variables from video file
@@ -88,7 +88,7 @@ class VidCompile:
 
         start: int = 0
         stop: int = fcnt - 1
-        print(f"\tVideo contains {fcnt} frames at {width}x{height} resolution and {fps} fps")
+        logging.info("\tVideo contains %d frames at (%dx%d) resolution and %d fps", fcnt, width, height, fps)
 
         # # If video has a bubble, prompt user to trim until they confirm
         # status: int = -1                       # If the video has a bubble, this determines editing state
@@ -113,7 +113,7 @@ class VidCompile:
         #             # TODO: save to new video and delete old one
         #             cv2.destroyAllWindows()
         #         elif status == 2:               # If the user elects to ignore the clip, move on
-        #             print("Skipping the current bubble clip...")
+        #             logging.info("Skipping the current bubble clip...")
         #             cv2.destroyAllWindows()
         #             return
 
@@ -123,19 +123,20 @@ class VidCompile:
 
         # Choose between multiprocessing and single process
         if MP:
-            logging.info("\tLaunching Multiprocessing")
             num_processes = mp.cpu_count()              # Number of processes based on cores
+            logging.info("\tLaunching Multiprocessing with %d Cores", num_processes)
             p = mp.Pool(num_processes)
 
+            # try:
             # Only one parameter can be passed to a pool map, expand it by packing into a tuple
             params = [(fname, x, start, stop) for x in range(num_processes)]
-
             frame_queue = p.map(process_video, params) # blocking until finished
-            logging.info("MP Finished with %d outputs", len(frame_queue))
+            # except KeyboardInterrupt:
+            #     p.terminate()
             p.close()
         else:
             logging.info("\tLaunching Single Process")
-            frame_queue.append(process_video(0))
+            frame_queue.append(process_video([fname, 0, start, stop]))
 
         if frame_queue:             # Make sure that an image was actually returned
             final_output = frame_queue.pop()        # Initial Frame
@@ -144,7 +145,7 @@ class VidCompile:
                 final_output = process_frame(final_output, new_frame)
 
             # Display the final results and output to file
-            logging.info("Finished! Writing to file...\n")
+            logging.info("Finished! Writing to file...")
             pth = self.outpath
             if RECURSIVE:                   # Output file structure must match source
                 subdir = CUR_DIR
@@ -159,8 +160,8 @@ class VidCompile:
 
         end_time = datetime.datetime.utcnow()
         run_time: float = (end_time-start_time).total_seconds()
-        logging.info("\tProcessing took %f seconds", run_time)
-        logging.info("\t%f Frames processed per second", fcnt/run_time)
+        logging.info("Processing took %f seconds", run_time)
+        logging.info("%f Frames processed per second\n", fcnt/run_time)
 
     def edit_vid(self, gry, vid_stats) -> tuple[int, int, int, int]:
         """ Decide on what threshold to apply on the image
@@ -182,12 +183,12 @@ class VidCompile:
         stop: int = vid_stats[3]
         status: int = vid_stats[4]
 
-        if status == -1:                # Only print this the first time for each video edit
+        if status == -1:                # Only do this the first time for each video edit
             # def nothing(x):
             #     pass
             # def click_event(event, x, y, flags, params):
             #     if event == cv2.EVENT_LBUTTONDOWN:
-            #         print(f"({x},{y}) -> {gry[y,x]}")
+            #         logging.info(f"({x},{y}) -> {gry[y,x]}")
 
             # cv2.namedWindow('image', cv2.WINDOW_FULLSCREEN)
             # cv2.setMouseCallback('image', click_event)
@@ -267,7 +268,7 @@ def process_video(params):
     # Open Camera and check for success
     cap = cv2.VideoCapture(fname)
     if cap.isOpened() is False:
-        print("Error opening video stream or file")
+        print("\tError opening video stream or file")
         sys.exit(1)
 
     try:
