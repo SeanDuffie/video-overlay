@@ -223,6 +223,7 @@ class VidCompile:
                 logging.info("Editing video with %d frames...", fcnt)
 
                 ret, frame = cap.read()         # Capture frame-by-frame
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 cv2.imshow(fname, frame)
                 status = 0
             
@@ -240,6 +241,7 @@ class VidCompile:
                     logging.info("Index = %d/%d", index, fcnt-1)
                     cap.set(cv2.CAP_PROP_POS_FRAMES, index-1)   # Update Image
                     ret, frame = cap.read()         # Capture frame-by-frame
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     cv2.imshow(fname, frame)
                 elif Key == 2555904:        # Right arrow, next frame
                     if index < fcnt-1:     # Enforce max bounds
@@ -247,6 +249,7 @@ class VidCompile:
                     logging.info("Index = %d/%d", index, fcnt-1)
                     cap.set(cv2.CAP_PROP_POS_FRAMES, index-1)   # Update Image
                     ret, frame = cap.read()             # Capture frame-by-frame
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     cv2.imshow(fname, frame)
                 elif Key == 13:             # Enter key, accept current settings
                     status = 1
