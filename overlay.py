@@ -10,11 +10,9 @@ from tkinter import filedialog
 import cv2
 import numpy as np
 
-RECURSIVE: bool = True  # Single file or whole directory?
-MP: bool = False         # Use Multiprocessing?
-INIT_THRESH: int = 255  # Background cutoff value
-CUR_DIR: str = ''       # Placeholder for the filepath string
-CUR_VID: str = ''       # Placeholder for the filename string
+RECURSIVE: bool = False  # Single file or whole directory?
+MP: bool = True         # Use Multiprocessing?
+# INIT_THRESH: int = 255  # Background cutoff value
 
 class VidCompile:
     """ Compiles an input video into one overlayed image """
@@ -24,57 +22,74 @@ class VidCompile:
                         datefmt="%Y-%m-%d %H:%M:%S")
 
         # Set path
-        global CUR_DIR, CUR_VID
-        self.outpath: str = './outputs/'
+        self.cur_dir: str = ''              # Placeholder for the filepath string iterator
+        self.cur_vid: str = ''              # Placeholder for the filename string iterator
+        self.inpath: str = './sample/'               # Path of the root output directory
+        self.outpath: str = './outputs/'    # Path of the root output directory
 
         # Prepare the outputs directory if it doesn't exist yet
         os.makedirs("./outputs", exist_ok=True)
 
         logging.debug("Reading video...")
         if RECURSIVE:
+            # Timing for performance diagnostics
+            start_time = datetime.datetime.utcnow()
+            tot_frames = 0
+
             # Find the directory to read from
-            inpath = filedialog.askdirectory()
-            if inpath == "":
+            # self.inpath = filedialog.askdirectory()
+            if self.inpath == "":
                 logging.error("No directory specified! Exiting...")
                 sys.exit(1)
-            logging.info("Parsing directory: %s", inpath)
+            logging.info("Parsing directory: %s", self.inpath)
 
             # Find the directory to write to
-            self.outpath = filedialog.askdirectory()     # Pick output location
+            # self.outpath = filedialog.askdirectory()     # Pick output location
             if self.outpath == "":
                 logging.error("No output directory specified! Exiting...")
                 sys.exit(1)
             logging.info("Output directory: %s", self.outpath)
-            for root,d_names,f_names in os.walk(inpath):
+            for root,d_names,f_names in os.walk(self.inpath):
                 for f in f_names:
                     if f.endswith(".avi") or f.endswith(".mp4"):
-                        CUR_DIR = root
-                        logging.info("Current Video Directory: %s", CUR_DIR)
-                        CUR_VID = os.path.basename(f)
-                        logging.info("Current Video: %s", CUR_VID)
-                        self.run()
+                        self.cur_dir = root.replace(self.inpath, '')
+                        logging.info("Current Video Directory:   %s", self.cur_dir)
+                        self.cur_vid = os.path.basename(f)
+                        logging.info("Current Video:\t\t   %s", self.cur_vid)
+                        tot_frames += self.run()
+
+            # Timing for the whole input set
+            end_time = datetime.datetime.utcnow()
+            run_time: float = (end_time-start_time).total_seconds()
+            logging.info("The whole directory took %f seconds", run_time)
+            logging.info("%f Total FPS", tot_frames/run_time)
 
         else:
             # Acquire the path of a specific file
-            filepath = filedialog.askopenfilename()
-            if filepath == "":
+            self.inpath = filedialog.askopenfilename(
+                title="Select Video",
+                filetypes=[
+                    ("Videos", "mp4"),
+                    ("Videos", "avi"),
+                    ("Videos", "flv"),
+                ]
+            )
+            if self.inpath == "":
                 logging.error("No file specified! Exiting...")
                 sys.exit(1)
 
             # Separate into directory and filename, then confirm it's a video
-            CUR_VID = os.path.basename(filepath)
-            if (not CUR_VID.endswith(".avi") and not CUR_VID.endswith(".mp4")):
-                logging.error("File must be a video! Exiting...")
-                sys.exit(1)
+            self.inpath, self.cur_vid = os.path.split(self.inpath)
             self.run()
 
-    def run(self):
+    def run(self) -> int:
         """ Main runner per video """
-        fname: str = CUR_DIR + "/" + CUR_VID
         # Open Camera and check for success
+        fname: str = self.inpath + self.cur_dir + "/" + self.cur_vid
         cap = cv2.VideoCapture(fname)
         if cap.isOpened() is False:
             logging.error("Error opening video stream or file. Exiting...")
+            logging.error("Filename: %s", fname)
             sys.exit(1)
 
         # Read variables from video file
@@ -87,35 +102,12 @@ class VidCompile:
         cap.release()
 
         start: int = 0
-        stop: int = fcnt - 1
+        stop: int = fcnt
         logging.info("\tVideo contains %d frames at (%dx%d) resolution and %d fps", fcnt, width, height, fps)
 
         # # If video has a bubble, prompt user to trim until they confirm
-        # status: int = -1                       # If the video has a bubble, this determines editing state
         # if "bubble" in fname:
-        #     while status != 1:
-        #         if status <= 0:
-        #             vid_stats = [c, fcnt, start, stop, status]
-        #             new_stats = self.edit_vid(frame, vid_stats)
-        #             c = new_stats[0]
-        #             start = new_stats[1]
-        #             stop = new_stats[2]
-        #             status = new_stats[3]
-        #             # c = new_stats[0]
-        #             ret = True
-        #             cv2.waitKey(1)
-        #         if status == 1:
-        #             if i < start:
-        #                 continue
-        #             if i > stop:
-        #                 break
-        #             c+=1
-        #             # TODO: save to new video and delete old one
-        #             cv2.destroyAllWindows()
-        #         elif status == 2:               # If the user elects to ignore the clip, move on
-        #             logging.info("Skipping the current bubble clip...")
-        #             cv2.destroyAllWindows()
-        #             return
+        #     start, stop = self.edit_vid(cap, fname)
 
         # Timing for performance diagnostics
         start_time = datetime.datetime.utcnow()
@@ -145,16 +137,15 @@ class VidCompile:
                 final_output = process_frame(final_output, new_frame)
 
             # Display the final results and output to file
-            logging.info("Finished! Writing to file...")
             pth = self.outpath
             if RECURSIVE:                   # Output file structure must match source
-                subdir = CUR_DIR
-                head, tail = os.path.split(CUR_DIR)
-                subdir = subdir.replace(head,'')
+                subdir = os.path.basename(self.inpath) + self.cur_dir
                 pth = os.path.normpath(self.outpath + subdir)
                 os.makedirs(pth, exist_ok=True)
 
-            cv2.imwrite(f"{pth}/{CUR_VID[0:len(CUR_VID)-4]}.png", final_output)
+            outname = f"{pth}/{self.cur_vid[0:len(self.cur_vid)-4]}.png"
+            logging.info("Finished! Writing to file: %s", pth)
+            cv2.imwrite(outname, final_output)
         else:
             logging.warning("Output File empty")
 
@@ -163,7 +154,9 @@ class VidCompile:
         logging.info("Processing took %f seconds", run_time)
         logging.info("%f Frames processed per second\n", fcnt/run_time)
 
-    def edit_vid(self, gry, vid_stats) -> tuple[int, int, int, int]:
+        return fcnt
+
+    def edit_vid(self, cap, fcnt) -> tuple[int, int, int, int]:
         """ Decide on what threshold to apply on the image
             Anything above the threshold will be considered background and ignored
 
@@ -177,35 +170,52 @@ class VidCompile:
                 - Replace the old video with the new frame array after cropping and remove "bubble" from name
                     - This would make bubbles a one time fix, but would modify the original file (could be good or bad)
         """
-        index: int = vid_stats[0]
+        fname: int = vid_stats[0]
         fcnt: int = vid_stats[1]
-        start: int = vid_stats[2]
-        stop: int = vid_stats[3]
-        status: int = vid_stats[4]
 
-        if status == -1:                # Only do this the first time for each video edit
-            # def nothing(x):
-            #     pass
-            # def click_event(event, x, y, flags, params):
-            #     if event == cv2.EVENT_LBUTTONDOWN:
-            #         logging.info(f"({x},{y}) -> {gry[y,x]}")
+        status: int = -1                       # If the video has a bubble, this determines editing state
+        while status != 1:
+            if status == 2:               # If the user elects to ignore the clip, move on
+                logging.info("Skipping the current bubble clip...")
+                cv2.destroyAllWindows()
+                return
+            if status == 1:
+                i = 0
+                while i < fcnt:
+                    if i < start:
+                        i+=1
+                        continue
+                    if i > stop:
+                        break
+                    i+=1
+                # TODO: save to new video and delete old one
+                cv2.destroyAllWindows()
 
-            # cv2.namedWindow('image', cv2.WINDOW_FULLSCREEN)
-            # cv2.setMouseCallback('image', click_event)
-            # cv2.setWindowProperty('image', cv2.WND_PROP_TOPMOST, 1)
-            # cv2.createTrackbar('color_track', 'image', self.thresh, 255, nothing)
+            if status == -1:                # Only do this the first time for each video edit
+                # def nothing(x):
+                #     pass
+                # def click_event(event, x, y, flags, params):
+                #     if event == cv2.EVENT_LBUTTONDOWN:
+                #         logging.info(f"({x},{y}) -> {gry[y,x]}")
 
-            logging.info("How to use:")
-            logging.info("\t- 'esc' - skips the current video")
-            logging.info("\t- 'enter' - accepts the current settings")
-            logging.info("\t- 'space' - sets the current frame as the starting point")
-            logging.info("\t- 'backspace' - sets the current frame as the ending point")
-            logging.info("\t- 'left' - moves back one frame")
-            logging.info("\t- 'right' - moves forward one frame")
-            # logging.info("\t- 'up' - increases the threshold")
-            # logging.info("\t- 'down' - decreases the threshold")
-            # logging.info("\t- 'left click' - click anywhere on the image to show that pixel's value")
-            logging.info("Editing video with %d frames...", fcnt)
+                # cv2.namedWindow('image', cv2.WINDOW_FULLSCREEN)
+                # cv2.setMouseCallback('image', click_event)
+                # cv2.setWindowProperty('image', cv2.WND_PROP_TOPMOST, 1)
+                # cv2.createTrackbar('color_track', 'image', self.thresh, 255, nothing)
+
+                logging.info("How to use:")
+                logging.info("\t- 'esc' - skips the current video")
+                logging.info("\t- 'enter' - accepts the current settings")
+                logging.info("\t- 'space' - sets the current frame as the starting point")
+                logging.info("\t- 'backspace' - sets the current frame as the ending point")
+                logging.info("\t- 'left' - moves back one frame")
+                logging.info("\t- 'right' - moves forward one frame")
+                # logging.info("\t- 'up' - increases the threshold")
+                # logging.info("\t- 'down' - decreases the threshold")
+                # logging.info("\t- 'left click' - click anywhere on the image to show that pixel's value")
+                logging.info("Editing video with %d frames...", fcnt)
+
+            cv2.waitKey(1)
 
         # Generate thresholds
         # ret, edit = cv2.threshold(gry,self.thresh,255,cv2.THRESH_TOZERO_INV)
