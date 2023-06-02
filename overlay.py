@@ -10,9 +10,9 @@ from tkinter import filedialog
 import cv2
 import numpy as np
 
-RECURSIVE: bool = False  # Single file or whole directory?
+RECURSIVE: bool = True  # Single file or whole directory?
 MP: bool = True         # Use Multiprocessing?
-# INIT_THRESH: int = 255  # Background cutoff value
+INIT_THRESH: int = 255  # Background cutoff value
 
 class VidCompile:
     """ Compiles an input video into one overlayed image """
@@ -24,8 +24,8 @@ class VidCompile:
         # Set path
         self.cur_dir: str = ''              # Placeholder for the filepath string iterator
         self.cur_vid: str = ''              # Placeholder for the filename string iterator
-        self.inpath: str = './sample/'               # Path of the root output directory
-        self.outpath: str = './outputs/'    # Path of the root output directory
+        self.inpath: str = './samples'      # Path of the root output directory
+        self.outpath: str = './outputs/'     # Path of the root output directory
 
         # Prepare the outputs directory if it doesn't exist yet
         os.makedirs("./outputs", exist_ok=True)
@@ -53,9 +53,9 @@ class VidCompile:
                 for f in f_names:
                     if f.endswith(".avi") or f.endswith(".mp4"):
                         self.cur_dir = root.replace(self.inpath, '')
-                        logging.info("Current Video Directory:   %s", self.cur_dir)
+                        logging.info("Current Video Directory:\t%s", self.cur_dir)
                         self.cur_vid = os.path.basename(f)
-                        logging.info("Current Video:\t\t   %s", self.cur_vid)
+                        logging.info("Current Video:\t\t\t%s", self.cur_vid)
                         tot_frames += self.run()
 
             # Timing for the whole input set
@@ -85,7 +85,7 @@ class VidCompile:
     def run(self) -> int:
         """ Main runner per video """
         # Open Camera and check for success
-        fname: str = self.inpath + self.cur_dir + "/" + self.cur_vid
+        fname: str = os.path.normpath(self.inpath + self.cur_dir + "/" + self.cur_vid)
         cap = cv2.VideoCapture(fname)
         if cap.isOpened() is False:
             logging.error("Error opening video stream or file. Exiting...")
@@ -99,15 +99,18 @@ class VidCompile:
             int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
             int(cap.get(cv2.CAP_PROP_FPS))
         )
-        cap.release()
 
         start: int = 0
         stop: int = fcnt
         logging.info("\tVideo contains %d frames at (%dx%d) resolution and %d fps", fcnt, width, height, fps)
 
-        # # If video has a bubble, prompt user to trim until they confirm
-        # if "bubble" in fname:
-        #     start, stop = self.edit_vid(cap, fname)
+        # If video has a bubble, prompt user to trim until they confirm
+        if "bubble" in fname:
+            start, stop, skip = self.edit_vid(cap, fcnt, os.path.basename(fname))
+            if skip:
+                return 0
+
+        cap.release()
 
         # Timing for performance diagnostics
         start_time = datetime.datetime.utcnow()
@@ -144,7 +147,7 @@ class VidCompile:
                 os.makedirs(pth, exist_ok=True)
 
             outname = f"{pth}/{self.cur_vid[0:len(self.cur_vid)-4]}.png"
-            logging.info("Finished! Writing to file: %s", pth)
+            logging.info("Finished! Writing to file:\t%s", pth)
             cv2.imwrite(outname, final_output)
         else:
             logging.warning("Output File empty")
@@ -156,7 +159,7 @@ class VidCompile:
 
         return fcnt
 
-    def edit_vid(self, cap, fcnt) -> tuple[int, int, int, int]:
+    def edit_vid(self, cap, fcnt: int, fname: str) -> tuple[int, int, bool]:
         """ Decide on what threshold to apply on the image
             Anything above the threshold will be considered background and ignored
 
@@ -170,16 +173,19 @@ class VidCompile:
                 - Replace the old video with the new frame array after cropping and remove "bubble" from name
                     - This would make bubbles a one time fix, but would modify the original file (could be good or bad)
         """
-        fname: int = vid_stats[0]
-        fcnt: int = vid_stats[1]
+        index: int = 0
+        start: int = 0
+        stop: int = fcnt
+        thresh = INIT_THRESH
 
         status: int = -1                       # If the video has a bubble, this determines editing state
-        while status != 1:
+        while True:
             if status == 2:               # If the user elects to ignore the clip, move on
                 logging.info("Skipping the current bubble clip...")
                 cv2.destroyAllWindows()
-                return
+                return start, stop, True
             if status == 1:
+                # TODO: save to new video and delete old one
                 i = 0
                 while i < fcnt:
                     if i < start:
@@ -188,20 +194,22 @@ class VidCompile:
                     if i > stop:
                         break
                     i+=1
-                # TODO: save to new video and delete old one
                 cv2.destroyAllWindows()
+                return start, stop, False
 
             if status == -1:                # Only do this the first time for each video edit
-                # def nothing(x):
-                #     pass
-                # def click_event(event, x, y, flags, params):
-                #     if event == cv2.EVENT_LBUTTONDOWN:
-                #         logging.info(f"({x},{y}) -> {gry[y,x]}")
+                def adj_thresh(x):
+                    pass
 
-                # cv2.namedWindow('image', cv2.WINDOW_FULLSCREEN)
-                # cv2.setMouseCallback('image', click_event)
-                # cv2.setWindowProperty('image', cv2.WND_PROP_TOPMOST, 1)
-                # cv2.createTrackbar('color_track', 'image', self.thresh, 255, nothing)
+                def click_event(event, x, y, flags, params):
+                    if event == cv2.EVENT_LBUTTONDOWN:
+                        logging.info(f"({x},{y}) -> {frame[y,x]}")
+
+                cv2.namedWindow(fname, cv2.WINDOW_FULLSCREEN)
+                cv2.namedWindow('threshold', cv2.WINDOW_FULLSCREEN)
+                cv2.setMouseCallback(fname, click_event)
+                cv2.setWindowProperty(fname, cv2.WND_PROP_TOPMOST, 1)
+                cv2.createTrackbar('Threshold', 'threshold', thresh, 255, adj_thresh)
 
                 logging.info("How to use:")
                 logging.info("\t- 'esc' - skips the current video")
@@ -210,55 +218,49 @@ class VidCompile:
                 logging.info("\t- 'backspace' - sets the current frame as the ending point")
                 logging.info("\t- 'left' - moves back one frame")
                 logging.info("\t- 'right' - moves forward one frame")
-                # logging.info("\t- 'up' - increases the threshold")
-                # logging.info("\t- 'down' - decreases the threshold")
-                # logging.info("\t- 'left click' - click anywhere on the image to show that pixel's value")
+                logging.info("\t- 'Threshold trackbar' - Adjust the filter threshold value")
+                logging.info("\t- 'left click' - click anywhere on the image to show that pixel's value")
                 logging.info("Editing video with %d frames...", fcnt)
 
-            cv2.waitKey(1)
+                ret, frame = cap.read()         # Capture frame-by-frame
+                cv2.imshow(fname, frame)
+                status = 0
+            
+            # Generate thresholds
+            thresh = cv2.getTrackbarPos("Threshold", "threshold")
+            ret, edit = cv2.threshold(frame,thresh,255,cv2.THRESH_TOZERO_INV)
+            cv2.imshow("threshold", edit)
 
-        # Generate thresholds
-        # ret, edit = cv2.threshold(gry,self.thresh,255,cv2.THRESH_TOZERO_INV)
-        # ret, binary = cv2.threshold(gry,self.thresh,255,cv2.THRESH_BINARY)
-
-        # Show previews
-        # cv2.imshow("binary", binary)
-        cv2.imshow("image", gry)
-
-        # Enforce bounds and debug
-
-        # Use arrow keys to adjust threshold, up/down are fine tuning, left/right are bigger
-        Key = cv2.waitKeyEx(1)
-        if Key != -1:
-            if Key == 2424832:          # Left arrow, previous frame
-                if index > 0:               # Enforce min bounds
-                    index -= 1
-                logging.info("Index = %d/%d", index, fcnt-1)
-            elif Key == 2555904:        # Right arrow, next frame
-                # FIXME: the fcnt-2 below prevents the user from accessing the last frame, because when
-                #       they do, the process_video sees that it's the last frame and exits without saving
-                #       any of the frames and writes a white image. Everything else still works, and the
-                #       last frame isn't skipped in processing, just editing
-                if index < fcnt-2:     # Enforce max bounds
-                    index += 1
-                logging.info("Index = %d/%d", index, fcnt-1)
-            elif Key == 13:             # Enter key, accept current settings
-                return index, start, stop, 1
-            elif Key == 27:             # Escape key, skip current output
-                logging.info("Skipping video...")
-                return index, start, stop, 2
-            elif Key == 32:             # Space, set starting point
-                start = index
-                logging.info("New range: (%d-%d)", start, stop)
-            elif Key == 8:              # Backspace, set stopping point
-                stop = index
-                logging.info("New range: (%d-%d)", start, stop)
-            else:                       # Report unassigned key
-                logging.warning("Invalid Key: %d", Key)
-
-        # self.thresh = cv2.getTrackbarPos('color_track', 'image')
-
-        return index, start, stop, 0
+            # Use arrow keys to adjust threshold, up/down are fine tuning, left/right are bigger
+            Key = cv2.waitKeyEx(1)
+            if Key != -1:
+                if Key == 2424832:          # Left arrow, previous frame
+                    if index > 0:               # Enforce min bounds
+                        index -= 1
+                    logging.info("Index = %d/%d", index, fcnt-1)
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, index-1)   # Update Image
+                    ret, frame = cap.read()         # Capture frame-by-frame
+                    cv2.imshow(fname, frame)
+                elif Key == 2555904:        # Right arrow, next frame
+                    if index < fcnt-1:     # Enforce max bounds
+                        index += 1
+                    logging.info("Index = %d/%d", index, fcnt-1)
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, index-1)   # Update Image
+                    ret, frame = cap.read()             # Capture frame-by-frame
+                    cv2.imshow(fname, frame)
+                elif Key == 13:             # Enter key, accept current settings
+                    status = 1
+                elif Key == 27:             # Escape key, skip current output
+                    logging.info("Skipping video...")
+                    status = 2
+                elif Key == 32:             # Space, set starting point
+                    start = index
+                    logging.info("New range: (%d-%d)", start, stop)
+                elif Key == 8:              # Backspace, set stopping point
+                    stop = index
+                    logging.info("New range: (%d-%d)", start, stop)
+                else:                       # Report unassigned key
+                    logging.warning("Invalid Key: %d", Key)
 
 def process_video(params):
     """ Read in individual frames from the video
