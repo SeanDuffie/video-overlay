@@ -12,7 +12,14 @@ import numpy as np
 
 RECURSIVE: bool = True  # Single file or whole directory?
 MP: bool = True         # Use Multiprocessing?
-INIT_THRESH: int = 255  # Background cutoff value
+OUTPUT_MODE: int = 2    # Where should output files go?
+                        #       - 0: './outputs' with the python script
+                        #       - 1: same as wherever the input videos came from
+                        #       - 2: Pick location manually with a tkinter dialog
+                        #       - NOTE: There is a maximum path length, if the file/directory names
+                        #           are too long then it will fail to output the images without
+                        #           any warning(especially mode 2, using G Drive)
+INIT_THRESH: int = 255  # Background cutoff value (not used)
 
 class VidCompile:
     """ Compiles an input video into one overlayed image """
@@ -25,30 +32,50 @@ class VidCompile:
         self.cur_dir: str = ''              # Placeholder for the filepath string iterator
         self.cur_vid: str = ''              # Placeholder for the filename string iterator
         self.inpath: str = './samples'      # Path of the root output directory
-        self.outpath: str = './outputs/'    # Path of the root output directory
-
-        # Prepare the outputs directory if it doesn't exist yet
-        os.makedirs("./outputs", exist_ok=True)
+        self.outpath: str = './outputs'     # Path of the root output directory
 
         logging.debug("Reading video...")
+        # Select the Directory or Video file to read
+        if RECURSIVE:
+            self.inpath = filedialog.askdirectory(title="Select Recursive Input Path")  # Pick input directory
+            if self.inpath == "":
+                logging.error("No directory specified! Exiting...")
+                sys.exit(1)
+            logging.info("Parsing directory: %s", self.inpath)
+        else:
+            # Acquire the path of a specific file
+            self.inpath = filedialog.askopenfilename(
+                title="Select Input Video",
+                filetypes=[
+                    ("Videos", "mp4"),
+                    ("Videos", "avi"),
+                    ("Videos", "flv"),
+                ]
+            )
+            if self.inpath == "":
+                logging.error("No file specified! Exiting...")
+                sys.exit(1)
+
+            # Separate into directory and filename, then confirm it's a video
+            self.inpath, self.cur_vid = os.path.split(self.inpath)
+
+
+        # Find the directory to write to
+        if OUTPUT_MODE == 1:
+            self.outpath, self.cur_dir = os.path.split(self.inpath)
+        elif OUTPUT_MODE == 2:
+            self.outpath = filedialog.askdirectory(title="Select Output Path")     # Pick output location
+        if self.outpath == "":
+            logging.error("No output directory specified! Exiting...")
+            sys.exit(1)
+        logging.info("Output directory: %s", self.outpath)
+
         if RECURSIVE:
             # Timing for performance diagnostics
             start_time = datetime.datetime.utcnow()
             tot_frames = 0
 
-            # Find the directory to read from
-            # self.inpath = filedialog.askdirectory()
-            if self.inpath == "":
-                logging.error("No directory specified! Exiting...")
-                sys.exit(1)
-            logging.info("Parsing directory: %s", self.inpath)
-
-            # Find the directory to write to
-            # self.outpath = filedialog.askdirectory()     # Pick output location
-            if self.outpath == "":
-                logging.error("No output directory specified! Exiting...")
-                sys.exit(1)
-            logging.info("Output directory: %s", self.outpath)
+            # Perform the operations
             for root,d_names,f_names in os.walk(self.inpath):
                 for f in f_names:
                     if f.endswith(".avi") or f.endswith(".mp4"):
@@ -63,23 +90,7 @@ class VidCompile:
             run_time: float = (end_time-start_time).total_seconds()
             logging.info("The whole directory took %f seconds", run_time)
             logging.info("%f Total FPS", tot_frames/run_time)
-
         else:
-            # Acquire the path of a specific file
-            self.inpath = filedialog.askopenfilename(
-                title="Select Video",
-                filetypes=[
-                    ("Videos", "mp4"),
-                    ("Videos", "avi"),
-                    ("Videos", "flv"),
-                ]
-            )
-            if self.inpath == "":
-                logging.error("No file specified! Exiting...")
-                sys.exit(1)
-
-            # Separate into directory and filename, then confirm it's a video
-            self.inpath, self.cur_vid = os.path.split(self.inpath)
             self.run()
 
     def run(self) -> int:
@@ -143,11 +154,13 @@ class VidCompile:
             pth = self.outpath
             if RECURSIVE:                   # Output file structure must match source
                 subdir = os.path.basename(self.inpath) + self.cur_dir
-                pth = os.path.normpath(self.outpath + subdir)
-                os.makedirs(pth, exist_ok=True)
+                pth = os.path.normpath(self.outpath + "/" + subdir)
+
+            # Prepare the outputs directory if it doesn't exist yet
+            os.makedirs(pth, exist_ok=True)
 
             outname = f"{pth}/{self.cur_vid[0:len(self.cur_vid)-4]}.png"
-            logging.info("Finished! Writing to file:\t%s", pth)
+            logging.info("Finished! Writing to file:\t%s", outname)
             cv2.imwrite(outname, final_output)
         else:
             logging.warning("Output File empty")
