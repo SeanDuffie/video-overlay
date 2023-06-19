@@ -9,18 +9,9 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
-# logging.info("Index = %d/%d\t|\tThreshold = %d", index, len(self.frame_arr)-1, self.thresh)
-# logging.info("How to use:")
-# logging.info("\t- 'esc' - skips the current video")
-# logging.info("\t- 'enter' - accepts the current settings")
-# logging.info("\t- 'space' - sets the current frame as the starting point")
-# logging.info("\t- 'backspace' - sets the current frame as the ending point")
-# logging.info("\t- 'left' - moves back one frame")
-# logging.info("\t- 'right' - moves forward one frame")
-# logging.info("\t- 'up' - increases the threshold")
-# logging.info("\t- 'down' - decreases the threshold")
+# TODO: Logger
 
-
+OUTPUT_MODE = 0
 ZONE1 = True
 ZONE2 = True
 
@@ -44,17 +35,24 @@ class LineDetector:
         self.filename = os.path.basename(self.filepath)
 
         # x, y = enumerate(col_im[0])
-        plt.plot(self.col_im[0,self.start:self.stop])
-        plt.plot(self.rec_im[0,self.start:self.stop])
+        columns = range(self.start, self.stop)
+        plt.plot(columns, self.col_im[0,self.start:self.stop])
+        plt.plot(columns, self.rec_im[0,self.start:self.stop])
+
+        column_label = range(self.start, self.stop, 10)
+        values = range(0, 255, 16)
+        plot_name = f"graph_{self.filename}"
+
+        plt.xlabel("Pixel Columns")
+        plt.xticks(ticks=column_label, labels=column_label)
+        plt.yticks(ticks=values, labels=values)
+        plt.title(plot_name)
         # plt.show()
         plt.savefig(f"graph_{self.filename}")
 
         # cv2.waitKey()
+        plt.close()
         cv2.destroyAllWindows()
-
-    # def click_event(self, event, x, y, flags, params):
-    #     if event == cv2.EVENT_LBUTTONDOWN:
-    #         print(f"({x},{y}) -> {self.col_im[y,x]}")
 
 
     def read_file(self):
@@ -95,6 +93,17 @@ class LineDetector:
         self.start = 0
         self.stop = num_cols-1
 
+        # Display usage instructions in terminal
+        print("How to use:")
+        print("\t- 'esc' - skips the current video")
+        print("\t- 'enter' - accepts the current settings")
+        print("\t- 'space' - sets the current frame as the starting point")
+        print("\t- 'backspace' - sets the current frame as the ending point")
+        print("\t- 'left' - moves back one frame")
+        print("\t- 'right' - moves forward one frame")
+        print("\t- 'up' - increases the threshold")
+        print("\t- 'down' - decreases the threshold")
+
         # Loop until the user confirms the threshold value from the previews
         while True:
             # Draw lines on image
@@ -113,7 +122,6 @@ class LineDetector:
                     self.start -= 1
                 elif self.stop > self.start+1:
                     self.stop -= 1
-                logging.info("New range: (%d-%d)", self.start, self.stop)
             elif Key == 2621440:        # Down arrow
                 first_bar = True
             elif Key == 2490368:        # Up arrow
@@ -123,7 +131,6 @@ class LineDetector:
                     self.stop += 1
                 elif self.start < self.stop-1:
                     self.start += 1
-                logging.info("New range: (%d-%d)", self.start, self.stop)
             elif Key == 13:             # Enter key, accept current settings
                 self.col_im = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
                 break
@@ -141,7 +148,10 @@ class LineDetector:
                 self.start = 0
 
     def linear_reframe(self):
-        """
+        """ Using a 1D array, it will readjust the value scale to make differences more noticable
+        
+            This will be done by finding the min and max values, subtracting the min, and
+            multiplying by the different between the two scaled to 255.
         """
         b_p = np.min(self.col_im[0])
         w_p = np.max(self.col_im[0])
