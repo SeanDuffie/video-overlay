@@ -9,21 +9,21 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
-OUTPUT_MODE: int = 0
-TRIM_FILTER: bool = True        # Do we want to trim the image outside of focus?
+OUTPUT_MODE: int = 0            # TODO: Output mode identifies if we are using control system
+TRIM_FILTER: bool = False        # Do we want to trim the image outside of focus?
 THRESH_FILTER: bool = True      # Do we want to highlight values above a threshold?
 
 class LineDetector:
     """
     """
-    def __init__(self, filepath = "", img = None):
-        fmt_main = "%(asctime)s | %(levelname)s |\tLineDetector:\t%(message)s"
+    def __init__(self, filename: str="sample", img = None):
+        fmt_main: str = "%(asctime)s | %(levelname)s |\tLineDetector:\t%(message)s"
         logging.basicConfig(format=fmt_main, level=logging.INFO,
                         datefmt="%Y-%m-%d %H:%M:%S")
 
-        if img == None:
+        if img is None:
             # Get Filepath from user
-            filepath = filedialog.askopenfilename(
+            filepath: str = filedialog.askopenfilename(
                 title="Select Overlay Image",
                 filetypes=[
                     ("Images", "png"),
@@ -38,11 +38,11 @@ class LineDetector:
             # Read in image from user-supplied filepath
             img = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
 
-            self.start: int = 0
-            self.stop: int = len(img[0])
+            # Extract the Image name from the path
+            filename: str = os.path.basename(filepath).split(".")[0]
 
-        # Extract the Image name from the path
-        filename: str = os.path.basename(filepath).split(".")[0]
+        self.start: int = 350
+        self.stop: int = len(img[0])-12
 
         # Compress the image into a 1D array of values, then scale to emphasize differences
         avg_img, min_img = self.compress_columns(img)
@@ -95,14 +95,10 @@ class LineDetector:
             start, stop = self.select_zone(avg_col)
             self.start = start
             self.stop = stop
-            avg_col = avg_col[0,start:stop]
-            min_col = min_col[0,start:stop]
-        else:
-            avg_col = avg_col[0,:]
-            min_col = min_col[0,:]
 
-        avg_col = self.linear_reframe(avg_col)
-        min_col = self.linear_reframe(min_col)
+        # Rescale the images, trim to new start/stop, and convert to 1D
+        avg_col = self.linear_reframe(avg_col[0,self.start:self.stop])
+        min_col = self.linear_reframe(min_col[0,self.start:self.stop])
 
         return avg_col, min_col
 
@@ -147,9 +143,11 @@ class LineDetector:
                 elif start < stop-10:
                     start += 10
             elif Key == 49:        # 1 Key
-                first_bar = True
+                first_bar: bool = True
+                logging.info("Now changing the Staring point...")
             elif Key == 50:        # 2 Key
-                first_bar = False
+                first_bar: bool = False
+                logging.info("Now changing the Stopping point...")
             elif Key == 13:             # Enter Key, accept current settings
                 return start, stop
             elif Key == 27:             # Escape Key
@@ -170,29 +168,42 @@ class LineDetector:
             This will be done by finding the min and max values, subtracting the min, and
             multiplying by the different between the two scaled to 255.
         """
-        if THRESH_FILTER:
-            img = self.highlight(img)
-
+        # Acquire the Min and Max
         b_p = np.min(img)
         w_p = np.max(img)
 
+        # Cut off any values above the white point, subtract by the black point, then multiply to scale from 0-255
         scale = (w_p-b_p)/255
         rec_img = np.clip(img, b_p, w_p) - b_p
         rec_img = (rec_img / scale).astype(np.uint8)
 
+        # If we want to manually filter out certain values, this will prompt us
+        if THRESH_FILTER:
+            rec_img = self.highlight(rec_img)
+        
+            # Second round of linear_reframing, this is unnecessary but helpful if highlight performs a significant change
+            b_p = np.min(rec_img)
+            w_p = np.max(rec_img)
+
+            scale = (w_p-b_p)/255
+            rec_img = np.clip(rec_img, b_p, w_p) - b_p
+            rec_img = (rec_img / scale).astype(np.uint8)
+
         return rec_img
 
     def highlight(self, img):
-        """
-        """
-        thresh: int = 255
+        """ Attempts to flatten out peaks and trim noise
 
+            FIXME: This should be treated per peak, not on the image as a whole
+        """
         # Display usage instructions in terminal
         logging.info("How to use Highlighter:")
         logging.info("\t- 'esc' - skips the current video")
         logging.info("\t- 'enter' - accepts the current settings")
         logging.info("\t- 'up' - increases the threshold")
         logging.info("\t- 'down' - decreases the threshold")
+
+        thresh: int = 255
 
         # Loop until the user confirms the threshold value from the previews
         while True:
@@ -210,9 +221,8 @@ class LineDetector:
                     mkd_img[x] = 0
 
 
-            # Show preview
-            h = 30
-            mkd_img_2d = np.repeat(mkd_img, h).reshape((h, len(mkd_img)))
+            # Convert the 1D array into a 2D image and display it
+            mkd_img_2d = np.stack([mkd_img for _ in range(100)], axis=0)
             cv2.imshow("scaled", mkd_img_2d)
 
             # Use arrow keys to adjust threshold, up/down are fine tuning, left/right are bigger
