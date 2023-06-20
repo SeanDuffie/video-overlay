@@ -12,7 +12,7 @@ import numpy as np
 
 RECURSIVE: bool = True  # Single file or whole directory?
 MP: bool = True         # Use Multiprocessing?
-OUTPUT_MODE: int = 2    # Where should output files go?
+OUTPUT_MODE: int = 0    # Where should output files go?
                         #       - 0: './outputs' with the python script
                         #       - 1: same as wherever the input videos came from
                         #       - 2: Pick location manually with a tkinter dialog
@@ -21,10 +21,10 @@ OUTPUT_MODE: int = 2    # Where should output files go?
                         #           any warning(especially mode 2, using G Drive)
 INIT_THRESH: int = 255  # Background cutoff value (not used)
 
-class VidCompile:
+class Overlay:
     """ Compiles an input video into one overlayed image """
-    def __init__(self) -> None:
-        fmt_main = "%(asctime)s\t| %(levelname)s\t| VidCompile:\t%(message)s"
+    def __init__(self, mode=0) -> None:
+        fmt_main = "%(asctime)s | %(levelname)s |\tOverlay:\t%(message)s"
         logging.basicConfig(format=fmt_main, level=logging.INFO,
                         datefmt="%Y-%m-%d %H:%M:%S")
 
@@ -288,10 +288,10 @@ def process_video(params):
 
         FIXME: This is the weak link after the other speed fix, how can this run faster?
     """
-    fname = params[0]
+    fname: str = params[0]
     group_number: int = params[1]
-    start = params[2]
-    stop = params[3]
+    start: int = params[2]
+    stop: int = params[3]
 
     # Open Camera and check for success
     cap = cv2.VideoCapture(fname)
@@ -309,8 +309,8 @@ def process_video(params):
         
         # Set up parameters based on core usage
         if MP:
-            frame_jump_unit = (stop - start) // mp.cpu_count()
-            start_frame = (group_number * frame_jump_unit) + start
+            frame_jump_unit: int = (stop - start) // mp.cpu_count()
+            start_frame: int = (group_number * frame_jump_unit) + start
             c: int = start_frame     # Iterater through video frames
         else:
             frame_jump_unit = stop - start
@@ -352,4 +352,4 @@ def process_frame(im, output):
     return np.minimum(output, im)
 
 if __name__ == "__main__":
-    ov = VidCompile()
+    ov = Overlay()
