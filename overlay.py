@@ -10,6 +10,8 @@ from tkinter import filedialog
 import cv2
 import numpy as np
 
+from linedetector import LineDetector
+
 RECURSIVE: bool = True  # Single file or whole directory?
 MP: bool = True         # Use Multiprocessing?
 OUTPUT_MODE: int = 0    # Where should output files go?
@@ -159,9 +161,12 @@ class Overlay:
             # Prepare the outputs directory if it doesn't exist yet
             os.makedirs(pth, exist_ok=True)
 
-            outname = f"{pth}/{self.cur_vid[0:len(self.cur_vid)-4]}.png"
-            logging.info("Finished! Writing to file:\t%s", outname)
-            cv2.imwrite(outname, final_output)
+            outname = f"{pth}/{self.cur_vid[0:len(self.cur_vid)-4]}"
+            logging.info("Finished! Writing to file:\t%s", outname + ".png")
+            cv2.imwrite(outname + ".png", final_output)
+
+            # Run the Line Detection algorithm (Comment out to reduce)
+            LD = LineDetector(filename=outname, img=final_output)
         else:
             logging.warning("Output File empty")
 

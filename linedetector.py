@@ -11,7 +11,7 @@ import numpy as np
 
 OUTPUT_MODE: int = 0            # TODO: Output mode identifies if we are using control system
 TRIM_FILTER: bool = False        # Do we want to trim the image outside of focus?
-THRESH_FILTER: bool = True      # Do we want to highlight values above a threshold?
+THRESH_FILTER: bool = False      # Do we want to highlight values above a threshold?
 
 class LineDetector:
     """
@@ -56,12 +56,11 @@ class LineDetector:
         plt.plot(columns, min_img, label="Minimum")
 
         # Format the Plot and either show or save to PNG
-        plot_name = f"graph_{filename}"
         plt.xlabel("Pixel Columns")
         plt.xticks(ticks=column_label, labels=column_label)
         plt.ylabel("Value")
         plt.yticks(ticks=values, labels=values)
-        plt.title(plot_name)
+        plt.title(os.path.basename(filename))
         plt.legend(
             loc="upper left",
             fancybox=True,
@@ -69,7 +68,7 @@ class LineDetector:
             ncol=1,
         )
         # plt.show()
-        plt.savefig(f"{plot_name}.png")
+        plt.savefig(f"{filename}_graph.png")
 
         # Shut down OpenCV Windows and Pyplot
         # cv2.waitKey()
