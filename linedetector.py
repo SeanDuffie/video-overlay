@@ -11,7 +11,7 @@ import numpy as np
 
 OUTPUT_MODE: int = 0            # TODO: Output mode identifies if we are using control system
 TRIM_FILTER: bool = False        # Do we want to trim the image outside of focus?
-THRESH_FILTER: bool = False      # Do we want to highlight values above a threshold?
+THRESH_FILTER: bool = True      # Do we want to highlight values above a threshold?
 
 class LineDetector:
     """
@@ -45,7 +45,7 @@ class LineDetector:
         self.stop: int = len(img[0])-12
 
         # Compress the image into a 1D array of values, then scale to emphasize differences
-        avg_img, min_img = self.compress_columns(img)
+        avg_img, min_img, max_img = self.compress_columns(img)
 
         # Plot the arrays to show the user what the distribution is
         tick_int: int = (self.stop-self.start) // 12
@@ -54,6 +54,7 @@ class LineDetector:
         values = range(0, 256, 16)
         plt.plot(columns, avg_img, label="Average")
         plt.plot(columns, min_img, label="Minimum")
+        plt.plot(columns, max_img, label="Minimum")
 
         # Format the Plot and either show or save to PNG
         plt.xlabel("Pixel Columns")
@@ -85,10 +86,12 @@ class LineDetector:
         r, c = img.shape
         avg_col = np.zeros((r, c), np.uint8)
         min_col = np.zeros((r, c), np.uint8)
+        max_col = np.zeros((r, c), np.uint8)
 
         for x in range(c):
             avg_col[:,x] = np.average(img[:,x])
             min_col[:,x] = np.min(img[:,x])
+            max_col[:,x] = np.max(img[:,x])
 
         if TRIM_FILTER:
             start, stop = self.select_zone(avg_col)
@@ -96,10 +99,13 @@ class LineDetector:
             self.stop = stop
 
         # Rescale the images, trim to new start/stop, and convert to 1D
-        avg_col = self.linear_reframe(avg_col[0,self.start:self.stop])
-        min_col = self.linear_reframe(min_col[0,self.start:self.stop])
+        avg_col, min_col, max_col = self.linear_reframe(
+            avg_col[0,self.start:self.stop],
+            min_col[0,self.start:self.stop],
+            max_col[0,self.start:self.stop]
+        )
 
-        return avg_col, min_col
+        return avg_col, min_col, max_col
 
     def select_zone(self, col_img) -> tuple[int, int]:
         """
@@ -161,36 +167,54 @@ class LineDetector:
             if start < 0:
                 start = 0
 
-    def linear_reframe(self, img):
+    def linear_reframe(self, avg_img, min_img, max_img):
         """ Using a 1D array, it will readjust the value scale to make differences more noticable
         
             This will be done by finding the min and max values, subtracting the min, and
             multiplying by the different between the two scaled to 255.
         """
         # Acquire the Min and Max
-        b_p = np.min(img)
-        w_p = np.max(img)
+        b_p = np.min(avg_img)
+        w_p = np.max(avg_img)
 
         # Cut off any values above the white point, subtract by the black point, then multiply to scale from 0-255
         scale = (w_p-b_p)/255
-        rec_img = np.clip(img, b_p, w_p) - b_p
-        rec_img = (rec_img / scale).astype(np.uint8)
+        avg_img = np.clip(avg_img, b_p, w_p) - b_p
+        avg_img = (avg_img / scale).astype(np.uint8)
+        
+        # Acquire the Min and Max
+        b_p = np.min(min_img)
+        w_p = np.max(min_img)
+
+        # Cut off any values above the white point, subtract by the black point, then multiply to scale from 0-255
+        scale = (w_p-b_p)/255
+        min_img = np.clip(min_img, b_p, w_p) - b_p
+        min_img = (min_img / scale).astype(np.uint8)
+
+        # Acquire the Min and Max
+        b_p = np.min(max_img)
+        w_p = np.max(max_img)
+
+        # Cut off any values above the white point, subtract by the black point, then multiply to scale from 0-255
+        scale = (w_p-b_p)/255
+        max_img = np.clip(max_img, b_p, w_p) - b_p
+        max_img = (max_img / scale).astype(np.uint8)
 
         # If we want to manually filter out certain values, this will prompt us
         if THRESH_FILTER:
-            rec_img = self.highlight(rec_img)
+            avg_img, min_img, max_img = self.highlight(avg_img, min_img, max_img)
         
             # Second round of linear_reframing, this is unnecessary but helpful if highlight performs a significant change
-            b_p = np.min(rec_img)
-            w_p = np.max(rec_img)
+            # b_p = np.min(rec_img)
+            # w_p = np.max(rec_img)
 
-            scale = (w_p-b_p)/255
-            rec_img = np.clip(rec_img, b_p, w_p) - b_p
-            rec_img = (rec_img / scale).astype(np.uint8)
+            # scale = (w_p-b_p)/255
+            # rec_img = np.clip(rec_img, b_p, w_p) - b_p
+            # rec_img = (rec_img / scale).astype(np.uint8)
 
-        return rec_img
+        return avg_img, min_img, max_img
 
-    def highlight(self, img):
+    def highlight(self, avg_img, min_img, max_img):
         """ Attempts to flatten out peaks and trim noise
 
             FIXME: This should be treated per peak, not on the image as a whole
@@ -207,22 +231,28 @@ class LineDetector:
         # Loop until the user confirms the threshold value from the previews
         while True:
             # Draw lines on image
-            # color = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-            # mkd_img = np.minimum(img, thresh)
-            mkd_img = np.copy(img)
+            mkd_img_avg = np.copy(avg_img)
+            mkd_img_min = np.copy(min_img)
+            mkd_img_max = np.copy(max_img)
 
             # for x in range(c):
             #     if color[0,x] > thresh:
             #         color[:,x] = (0,255,0)
 
-            for x in range(len(mkd_img)):
-                if mkd_img[x] > thresh:
-                    mkd_img[x] = 0
+            for x in range(len(mkd_img_avg)):
+                if mkd_img_avg[x] > thresh:
+                    mkd_img_avg[x] = 0
+                else:
+                    mkd_img_avg[x] = 255
 
 
             # Convert the 1D array into a 2D image and display it
-            mkd_img_2d = np.stack([mkd_img for _ in range(100)], axis=0)
-            cv2.imshow("scaled", mkd_img_2d)
+            mkd_img_2d_avg = np.stack([mkd_img_avg for _ in range(100)], axis=0)
+            mkd_img_2d_min = np.stack([mkd_img_min for _ in range(100)], axis=0)
+            mkd_img_2d_max = np.stack([mkd_img_max for _ in range(100)], axis=0)
+            cv2.imshow("average", mkd_img_2d_avg)
+            cv2.imshow("minimum", mkd_img_2d_min)
+            cv2.imshow("maximum", mkd_img_2d_max)
 
             # Use arrow keys to adjust threshold, up/down are fine tuning, left/right are bigger
             Key = cv2.waitKeyEx()
@@ -237,10 +267,10 @@ class LineDetector:
             elif Key == 13:             # Enter key, accept current settings
                 logging.info("Threshold value set to %d...", thresh)
                 # img = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
-                return mkd_img
+                return mkd_img_avg, mkd_img_min, mkd_img_max
             elif Key == 27:
                 logging.info("Skipping Image Highlight...")
-                return img
+                return avg_img, min_img, max_img
             else:
                 logging.warning("Invalid Key: %d", Key)
 
