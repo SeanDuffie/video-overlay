@@ -15,33 +15,41 @@ OUTPUT_MODE: int = 0            # TODO: Output mode identifies if we are using c
 class LineDetector:
     """
     """
-    def __init__(self, filename: str="sample", img = None):
+    def __init__(self, dest: str = "./outputs", fname: str = "graph_name", img = None):
         fmt_main: str = "%(asctime)s | %(levelname)s |\tLineDetector:\t%(message)s"
         logging.basicConfig(format=fmt_main, level=logging.INFO,
                         datefmt="%Y-%m-%d %H:%M:%S")
 
+        outpath = dest
+        filename = fname
+
         if img is None:
             # Get Filepath from user
-            filepath: str = filedialog.askopenfilename(
-                title="Select Overlay Image",
+            inpath: str = filedialog.askopenfilename(
+                title="Select Input Overlay Image",
                 filetypes=[
                     ("Images", "png"),
                     ("Images", "jpg"),
                 ]
             )
-            if filepath == "":
+            if inpath == "":
                 logging.error("No Image File Specified! Exiting...")
                 sys.exit(1)
-            logging.info("Processing Image: %s", filepath)
+            logging.info("Processing Image: %s", inpath)
 
             # Read in image from user-supplied filepath
-            img = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
+            img = cv2.imread(inpath, cv2.IMREAD_GRAYSCALE)
 
             # Extract the Image name from the path
-            filename: str = os.path.basename(filepath).split(".")[0]
+            filename: str = os.path.basename(inpath).split(".")[0]
 
-        self.start: int = 0#350
-        self.stop: int = len(img[0])#-12
+        if outpath == "":
+            # Get Output Destination from user
+            outpath: str = filedialog.askdirectory( title="Select Output Directory" )
+            if outpath == "":
+                logging.error("No Image File Specified! Exiting...")
+                sys.exit(1)
+            logging.info("Processing Image: %s", outpath)
 
         # This will contain a list of peaks and valleys
         self.cluster_bounds: list[Any] = []
@@ -65,13 +73,12 @@ class LineDetector:
             plt.plot(i, val, "Xr")
             color[:,i] = (0,0,255)
 
-        cv2.imshow("marked", color)
-        cv2.imwrite(f"{filename}_colored.png", color)
+        cv2.imwrite(f"{outpath}/{filename}_colored.png", color)
 
         # Plot the arrays to show the user what the distribution is
-        tick_int: int = (self.stop-self.start) // 12
-        columns = range(self.start, self.stop)
-        column_label = range(self.start, self.stop, tick_int)
+        tick_int: int = len(avg_img) // 12
+        columns = range(len(avg_img))
+        column_label = range(len(avg_img), tick_int)
         values = range(0, 257, 16)
         plt.plot(columns, avg_img, label="Average")
 
@@ -88,7 +95,7 @@ class LineDetector:
             ncol=1,
         )
         # plt.show()
-        plt.savefig(f"{filename}_graph.png")
+        plt.savefig(f"{outpath}/{filename}_graph.png")
 
         # Shut down OpenCV Windows and Pyplot
         # cv2.waitKey()
@@ -104,7 +111,7 @@ class LineDetector:
                 - the average of all values in each column
                 - the minumum of all values in each column
         """
-        avg_col = np.zeros((self.stop-self.start), np.uint8)
+        avg_col = np.zeros(len(img[0]), np.uint8)
         for x in range(len(avg_col)):
             avg_col[x] = np.average(img[:,x])
 
