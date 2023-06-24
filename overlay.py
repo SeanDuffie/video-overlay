@@ -119,8 +119,8 @@ class Overlay:
 
         # If video has a bubble, prompt user to trim until they confirm
         if "bubble" in fname:
-            start, stop, skip = self.edit_vid(cap, fcnt, os.path.basename(fname))
-            if skip:
+            fname = self.edit_vid(cap, fname)
+            if "fixed" not in fname:
                 return 0
 
         cap.release()
@@ -161,12 +161,13 @@ class Overlay:
             # Prepare the outputs directory if it doesn't exist yet
             os.makedirs(pth, exist_ok=True)
 
-            outname = f"{pth}/{self.cur_vid[0:len(self.cur_vid)-4]}"
-            logging.info("Finished! Writing to file:\t%s", outname + ".png")
-            cv2.imwrite(outname + ".png", final_output)
+            outname = self.cur_vid.split(".")[0]
+            outpath = f"{pth}/{outname}.png"
+            logging.info("Finished! Writing to file:\t%s", outpath)
+            cv2.imwrite(outpath, final_output)
 
             # Run the Line Detection algorithm (Comment out to reduce)
-            LD = LineDetector(filename=outname, img=final_output)
+            LD = LineDetector(dest=pth, fname=outname, img=final_output)
         else:
             logging.warning("Output File empty")
 
@@ -177,7 +178,7 @@ class Overlay:
 
         return fcnt
 
-    def edit_vid(self, cap, fcnt: int, fname: str): #-> tuple[int, int, bool]:
+    def edit_vid(self, cap, fpath: str): #-> tuple[int, int, bool]:
         """ Decide on what threshold to apply on the image
             Anything above the threshold will be considered background and ignored
 
@@ -191,95 +192,94 @@ class Overlay:
                 - Replace the old video with the new frame array after cropping and remove "bubble" from name
                     - This would make bubbles a one time fix, but would modify the original file (could be good or bad)
         """
+        fcnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fname = os.path.basename(fpath)
+
+        cv2.namedWindow(fname, cv2.WINDOW_FULLSCREEN)
+        cv2.namedWindow('edit', cv2.WINDOW_FULLSCREEN)
+        cv2.setWindowProperty(fname, cv2.WND_PROP_TOPMOST, 1)
+
+        ret, frame = cap.read()         # Capture frame-by-frame
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        cv2.imshow(fname, frame)
+
+        logging.info("How to use:")
+        logging.info("\t- 'esc' - skips the current video")
+        logging.info("\t- 'enter' - accepts the current settings")
+        logging.info("\t- 'space' - sets the current frame as the starting point")
+        logging.info("\t- 'backspace' - sets the current frame as the ending point")
+        logging.info("\t- 'left' - moves back one frame")
+        logging.info("\t- 'right' - moves forward one frame")
+        logging.info("\t- 'left click' - click anywhere on the image to show that pixel's value")
+        logging.info("Editing video with %d frames...", fcnt)
+
         index: int = 0
         start: int = 0
         stop: int = fcnt
-        thresh = INIT_THRESH
-
-        status: int = -1                       # If the video has a bubble, this determines editing state
         while True:
-            if status == 2:               # If the user elects to ignore the clip, move on
-                logging.info("Skipping the current bubble clip...")
-                cv2.destroyAllWindows()
-                return start, stop, True
-            if status == 1:
-                # TODO: save to new video and delete old one
-                i = 0
-                while i < fcnt:
-                    if i < start:
-                        i+=1
-                        continue
-                    if i > stop:
-                        break
-                    i+=1
-                cv2.destroyAllWindows()
-                return start, stop, False
-
-            if status == -1:                # Only do this the first time for each video edit
-                def adj_thresh(x):
-                    pass
-
-                def click_event(event, x, y, flags, params):
-                    if event == cv2.EVENT_LBUTTONDOWN:
-                        logging.info(f"({x},{y}) -> {frame[y,x]}")
-
-                cv2.namedWindow(fname, cv2.WINDOW_FULLSCREEN)
-                cv2.namedWindow('threshold', cv2.WINDOW_FULLSCREEN)
-                cv2.setMouseCallback(fname, click_event)
-                cv2.setWindowProperty(fname, cv2.WND_PROP_TOPMOST, 1)
-                cv2.createTrackbar('Threshold', 'threshold', thresh, 255, adj_thresh)
-
-                logging.info("How to use:")
-                logging.info("\t- 'esc' - skips the current video")
-                logging.info("\t- 'enter' - accepts the current settings")
-                logging.info("\t- 'space' - sets the current frame as the starting point")
-                logging.info("\t- 'backspace' - sets the current frame as the ending point")
-                logging.info("\t- 'left' - moves back one frame")
-                logging.info("\t- 'right' - moves forward one frame")
-                logging.info("\t- 'Threshold trackbar' - Adjust the filter threshold value")
-                logging.info("\t- 'left click' - click anywhere on the image to show that pixel's value")
-                logging.info("Editing video with %d frames...", fcnt)
-
-                ret, frame = cap.read()         # Capture frame-by-frame
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                cv2.imshow(fname, frame)
-                status = 0
-            
-            # Generate thresholds
-            thresh = cv2.getTrackbarPos("Threshold", "threshold")
-            ret, edit = cv2.threshold(frame,thresh,255,cv2.THRESH_TOZERO_INV)
-            cv2.imshow("threshold", edit)
-
-            # Use arrow keys to adjust threshold, up/down are fine tuning, left/right are bigger
+            # Use arrow keys to move left or right
+            # Use space/backspace to set start/end
+            # Use enter to accept and esc to cancel
             Key = cv2.waitKeyEx(1)
             if Key != -1:
                 if Key == 2424832:          # Left arrow, previous frame
                     if index > 0:               # Enforce min bounds
                         index -= 1
                     logging.info("Index = %d/%d", index, fcnt-1)
+
                     cap.set(cv2.CAP_PROP_POS_FRAMES, index-1)   # Update Image
                     ret, frame = cap.read()         # Capture frame-by-frame
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
                     cv2.imshow(fname, frame)
+
                 elif Key == 2555904:        # Right arrow, next frame
                     if index < fcnt-1:     # Enforce max bounds
                         index += 1
                     logging.info("Index = %d/%d", index, fcnt-1)
+
                     cap.set(cv2.CAP_PROP_POS_FRAMES, index-1)   # Update Image
                     ret, frame = cap.read()             # Capture frame-by-frame
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
                     cv2.imshow(fname, frame)
+
                 elif Key == 13:             # Enter key, accept current settings
-                    status = 1
+                    # Reset video location
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, start)
+
+                    # Output the trimmed bubble video
+                    width, height, fps = (
+                        cap.get(cv2.CAP_PROP_FRAME_WIDTH),
+                        cap.get(cv2.CAP_PROP_FRAME_HEIGHT),
+                        cap.get(cv2.CAP_PROP_FPS),
+                    )
+                    fixed_fname: str = fpath.replace("bubble", "fixed")
+                    out = cv2.VideoWriter(fixed_fname, cv2.VideoWriter_fourcc(*'mp4v'), fps, (int(width), int(height)))
+                    for _ in range(stop-start):
+                        out.write(cap.read()[1])
+                    out.release()
+
+                    # Remove the old video and exit
+                    cap.release()
+                    os.remove(fpath)
+                    cv2.destroyAllWindows()
+                    return fixed_fname
+
                 elif Key == 27:             # Escape key, skip current output
-                    logging.info("Skipping video...")
-                    status = 2
+                    logging.info("Skipping the current bubble clip...")
+                    cap.release()
+                    cv2.destroyAllWindows()
+                    return fname
+
                 elif Key == 32:             # Space, set starting point
                     start = index
                     logging.info("New range: (%d-%d)", start, stop)
+
                 elif Key == 8:              # Backspace, set stopping point
                     stop = index
                     logging.info("New range: (%d-%d)", start, stop)
+
                 else:                       # Report unassigned key
                     logging.warning("Invalid Key: %d", Key)
 

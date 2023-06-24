@@ -10,7 +10,6 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
-OUTPUT_MODE: int = 0            # TODO: Output mode identifies if we are using control system
 
 class LineDetector:
     """
@@ -57,12 +56,12 @@ class LineDetector:
         self.wall_marks: list[Any] = []
 
         # Blur, then Compress the image into a 1D array of values, then scale to emphasize differences
-        blur = cv2.GaussianBlur(img, (15, 5), 0)
+        blur = cv2.GaussianBlur(img, (15, 5), 0)        # TODO: experiment with different values of blur
         avg_img = self.compress_columns(blur)
         color = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-        logging.info("Wall Marks: " + str(self.wall_marks))
-        logging.info("Cluster Marks: " + str(self.cluster_marks))
-        logging.info("Cluster Bounds: " + str(self.cluster_bounds))
+        # logging.info("Wall Marks: " + str(self.wall_marks))
+        # logging.info("Cluster Marks: " + str(self.cluster_marks))
+        # logging.info("Cluster Bounds: " + str(self.cluster_bounds))
         for i, val, climb in self.cluster_marks:
             plt.plot(i, val, "vg")
             color[:,i] = (0,255,0)
@@ -99,8 +98,8 @@ class LineDetector:
 
         # Shut down OpenCV Windows and Pyplot
         # cv2.waitKey()
-        haze = np.average(avg_img)
-        logging.info("Haze: %f", haze)
+        # haze = np.average(avg_img)
+        # logging.info("Haze: %f", haze)
         plt.close()
         cv2.destroyAllWindows()
 
@@ -172,7 +171,7 @@ class LineDetector:
             
             if cur_val > 127:           # Filter out left wall
                 if next_val < 127:      # Right Wall
-                    logging.info("Found right wall at: %d", a)
+                    # logging.info("Found right wall at: %d", a)
                     wall_marks.append([a, cur_val, 127])
 
                 # if cur_dir == 0:
@@ -184,14 +183,14 @@ class LineDetector:
                         # change in gradient, record peak or valley
                         if last_dir > 0:
                             # peak
-                            logging.info("Found peak at: %d", a)
+                            # logging.info("Found peak at: %d", a)
                             last_peak = cur_val
                             climb = last_peak - last_valley
                             climb = round(climb, 2)
                             cluster_marks.append([a, cur_val, climb])
                         else:
                             # valley
-                            logging.info("Found valley at: %d", a)
+                            # logging.info("Found valley at: %d", a)
                             last_valley = cur_val
                             climb = last_valley - last_peak
                             climb = round(climb, 2)
@@ -201,7 +200,7 @@ class LineDetector:
                 # Prepare for next iteration
                 last_val = cur_val
             elif next_val > 127:
-                logging.info("Found left wall at: %d", a)
+                # logging.info("Found left wall at: %d", a)
                 wall_marks.append([a, cur_val, 127])
 
         # filter out very small climbs
