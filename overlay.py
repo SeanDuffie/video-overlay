@@ -119,11 +119,10 @@ class Overlay:
 
         # If video has a bubble, prompt user to trim until they confirm
         if "bubble" in fname:
-            fname, fcnt = self.edit_vid(cap, fname)
+            fname = self.edit_vid(cap, fname)
             if "fixed" not in fname:
                 return 0
 
-        # Close the video file after setup and edit
         cap.release()
 
         # Timing for performance diagnostics
@@ -262,28 +261,18 @@ class Overlay:
                     for _ in range(stop-start):
                         out.write(cap.read()[1])
                     out.release()
-                    cap.release()
-
-                    # Open the new video and check
-                    cap = cv2.VideoCapture(fixed_fname)   # Capture video from file
-                    if cap.isOpened() is False:
-                        logging.error("Error opening the edited video file. Exiting...")
-                        logging.error("Filename: %s", fixed_fname)
-                        sys.exit(1)
-                    fcnt = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                    logging.info("\tEdited Video contains %d frames at (%dx%d) resolution and %d fps", fcnt, width, height, fps)
 
                     # Remove the old video and exit
                     cap.release()
                     os.remove(fpath)
                     cv2.destroyAllWindows()
-                    return fixed_fname, fcnt
+                    return fixed_fname
 
                 elif Key == 27:             # Escape key, skip current output
                     logging.info("Skipping the current bubble clip...")
                     cap.release()
                     cv2.destroyAllWindows()
-                    return fname, fcnt
+                    return fname
 
                 elif Key == 32:             # Space, set starting point
                     start = index
