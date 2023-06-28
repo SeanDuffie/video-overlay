@@ -1,5 +1,6 @@
 # Project Directories
 outputs/*
+high_frames
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

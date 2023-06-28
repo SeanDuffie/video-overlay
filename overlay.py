@@ -25,7 +25,7 @@ INIT_THRESH: int = 255  # Background cutoff value (not used)
 
 class Overlay:
     """ Compiles an input video into one overlayed image """
-    def __init__(self, mode=0) -> None:
+    def __init__(self) -> None:
         fmt_main = "%(asctime)s | %(levelname)s |\tOverlay:\t%(message)s"
         logging.basicConfig(format=fmt_main, level=logging.INFO,
                         datefmt="%Y-%m-%d %H:%M:%S")
@@ -167,9 +167,14 @@ class Overlay:
             cv2.imwrite(outpath, final_output)
 
             if "bifurcation" not in outname:
-                # Run the Line Detection algorithm (Comment out to reduce)
-                logging.info("Detecting Lines...")
-                LD = LineDetector(dest=pth, fname=outname, img=final_output)
+                ld_start_time = datetime.datetime.utcnow()
+
+                # Run the Line Detection algorithm (Comment out to speed up)
+                LineDetector(dest=pth, fname=outname, img=final_output)
+
+                ld_end_time = datetime.datetime.utcnow()
+                run_time: float = (ld_end_time-ld_start_time).total_seconds()
+                logging.info("Line Detect took %f seconds", run_time)
         else:
             logging.warning("Output File empty")
 
