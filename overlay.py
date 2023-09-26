@@ -13,7 +13,7 @@ import numpy as np
 from linedetector import LineDetector
 
 RECURSIVE: bool = True  # Single file or whole directory?
-MP: bool = True         # Use Multiprocessing?
+MP: bool = False         # Use Multiprocessing?
 OUTPUT_MODE: int = 0    # Where should output files go?
                         #       - 0: './outputs' with the python script
                         #       - 1: same as wherever the input videos came from
@@ -80,7 +80,7 @@ class Overlay:
             # Perform the operations
             for root,d_names,f_names in os.walk(self.inpath):
                 for f in f_names:
-                    if f.endswith(".avi") or f.endswith(".mp4"):
+                    if f.endswith((".avi", ".mp4")):
                         self.cur_dir = root.replace(self.inpath, '')
                         logging.info("Current Video Directory:\t%s", self.cur_dir)
                         self.cur_vid = os.path.basename(f)
@@ -133,23 +133,27 @@ class Overlay:
         if MP:
             num_processes = mp.cpu_count()              # Number of processes based on cores
             logging.info("\tLaunching Multiprocessing with %d Cores", num_processes)
-            p = mp.Pool(num_processes)
+            with mp.Pool(num_processes) as p:
 
-            # try:
-            # Only one parameter can be passed to a pool map, expand it by packing into a tuple
-            params = [(fname, x, start, stop) for x in range(num_processes)]
-            frame_queue = p.map(process_video, params) # blocking until finished
-            # except KeyboardInterrupt:
-            #     p.terminate()
-            p.close()
+                # try:
+                # Only one parameter can be passed to a pool map, expand it by packing into a tuple
+                params = [(fname, x, start, stop) for x in range(num_processes)]
+                frame_queue = p.map(process_video, params) # blocking until finished
+                # except KeyboardInterrupt:
+                #     p.terminate()
         else:
             logging.info("\tLaunching Single Process")
             frame_queue.append(process_video([fname, 0, start, stop]))
 
         if frame_queue:             # Make sure that an image was actually returned
             final_output = frame_queue.pop()        # Initial Frame
+            logging.info("Showing the Multiprocessing output...")
             while frame_queue:
                 new_frame = frame_queue.pop()       # Frames from other processes (if used)
+                # FIXME: Cores 0-2 produce blank white images, Core 3 Produces a 4th of the image
+                # logging.info("Showing the frame from a core")
+                # cv2.imshow("mp", new_frame)
+                # cv2.waitKey(0)
                 final_output = process_frame(final_output, new_frame)
 
             # Display the final results and output to file
@@ -308,7 +312,7 @@ def process_video(params):
     # Open Camera and check for success
     cap = cv2.VideoCapture(fname)
     if cap.isOpened() is False:
-        print("\tError opening video stream or file")
+        logging.error("\tError opening video stream or file")
         sys.exit(1)
 
     try:
@@ -342,6 +346,10 @@ def process_video(params):
             ret, frame = cap.read()         # Capture frame-by-frame
             if ret is True:                     # Check if read is successful
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                # TODO: Why are Cores 0-2 blank
+                # logging.info(f"Frame={c}")
+                # cv2.imshow("core", frame)
+                # cv2.waitKey(0)
 
                 # Do image processing
                 output = process_frame(output, frame)
